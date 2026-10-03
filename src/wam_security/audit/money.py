@@ -95,7 +95,7 @@ def audit_money_safety(root: str | Path) -> list[Finding]:
             "Use failover for read/idempotent RPCs only. Money movement must broadcast one precomputed raw transaction identity.",
         ))
 
-    if "this.startupReconcile().catch" in share and "this.paused = true" in share:
+    if "this.startupReconcile().catch" in share:
         findings.append(_f(
             "WS-MONEY-106", "MEDIUM",
             "Startup reconciliation failure is logged instead of failing the money path closed",
