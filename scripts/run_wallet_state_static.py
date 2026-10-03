@@ -74,6 +74,8 @@ def main() -> int:
     receive_cpp = read(core, "src/wallet/receive.cpp")
     rpc_spend = read(core, "src/wallet/rpc/spend.cpp")
     rpc_wallet = read(core, "src/wallet/rpc/wallet.cpp")
+    rpc_transactions = read(core, "src/wallet/rpc/transactions.cpp")
+    rpc_encrypt = read(core, "src/wallet/rpc/encrypt.cpp")
     rpc_backup = read(core, "src/wallet/rpc/backup.cpp")
     walletdb = read(core, "src/wallet/walletdb.cpp")
     sqlite = read(core, "src/wallet/sqlite.cpp")
@@ -128,10 +130,13 @@ def main() -> int:
             and "TxStateInactive" in wallet_cpp,
         "rescan_supported":
             "ScanForWalletTransactions" in rescan
-            and '"rescanblockchain"' in rpc_wallet,
+            and "RPCHelpMan rescanblockchain()" in rpc_transactions
+            and '"rescanblockchain"' in rpc_transactions,
         "wallet_encryption_locking_supported":
             "bool CWallet::IsLocked()" in wallet_cpp
-            and '"walletpassphrase"' in rpc_wallet,
+            and "RPCHelpMan walletpassphrase()" in rpc_encrypt
+            and "RPCHelpMan walletlock()" in rpc_encrypt
+            and "RPCHelpMan encryptwallet()" in rpc_encrypt,
         "backup_restore_supported":
             "return GetDatabase().Backup(strDest);" in backup
             and '"backupwallet"' in rpc_backup
@@ -183,8 +188,12 @@ def main() -> int:
         "rescan": [
             "src/wallet/wallet.cpp::RescanFromTime",
             "src/wallet/wallet.cpp::ScanForWalletTransactions",
+            "src/wallet/rpc/transactions.cpp::rescanblockchain",
         ],
-        "locking_encryption": ["src/wallet/wallet.cpp"],
+        "locking_encryption": [
+            "src/wallet/wallet.cpp",
+            "src/wallet/rpc/encrypt.cpp",
+        ],
         "backup_restore": [
             "src/wallet/wallet.cpp::BackupWallet",
             "src/wallet/rpc/backup.cpp",
