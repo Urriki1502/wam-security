@@ -22,30 +22,31 @@ class DgwTests(unittest.TestCase):
             blocks = [DgwBlock(h, 1000, 0x1E0FFFF0)]
             self.assertEqual(dark_gravity_wave(blocks, PARAMS), target_to_compact(POW_LIMIT))
 
-    def test_constant_target_and_ideal_spacing_is_near_stable(self):
+    def test_constant_target_and_ideal_spacing_matches_integer_rule(self):
         bits = 0x1E07FFF0
-        out = dark_gravity_wave(history(bits), PARAMS)
-        target_in = compact_to_target(bits)[0]
-        target_out = compact_to_target(out)[0]
-        # WAM defines expected span as 24*spacing but timestamps cover 23 gaps.
-        expected = target_in * (23 * 120) // (24 * 120)
-        self.assertLessEqual(abs(target_out - expected), max(1, expected // 1_000_000))
+        base = compact_to_target(bits)[0]
+        expected_target = base * (23 * 120) // (24 * 120)
+        self.assertEqual(
+            dark_gravity_wave(history(bits), PARAMS),
+            target_to_compact(expected_target),
+        )
 
     def test_fast_chain_clamps_to_one_third(self):
         bits = 0x1E07FFF0
-        out = dark_gravity_wave(history(bits, spacing=1), PARAMS)
-        got = compact_to_target(out)[0]
         base = compact_to_target(bits)[0]
-        expected = base // 3
-        self.assertLessEqual(abs(got - expected), max(1, expected // 1_000_000))
+        self.assertEqual(
+            dark_gravity_wave(history(bits, spacing=1), PARAMS),
+            target_to_compact(base // 3),
+        )
 
     def test_slow_chain_clamps_to_three_x(self):
         bits = 0x1E03FFF0
-        out = dark_gravity_wave(history(bits, spacing=10_000), PARAMS)
-        got = compact_to_target(out)[0]
         base = compact_to_target(bits)[0]
         expected = min(base * 3, POW_LIMIT)
-        self.assertLessEqual(abs(got - expected), max(1, expected // 1_000_000))
+        self.assertEqual(
+            dark_gravity_wave(history(bits, spacing=10_000), PARAMS),
+            target_to_compact(expected),
+        )
 
     def test_pow_limit_caps_easier_result(self):
         bits = target_to_compact(POW_LIMIT)
