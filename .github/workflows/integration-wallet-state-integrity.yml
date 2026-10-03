@@ -115,7 +115,7 @@ jobs:
         working-directory: wam-src/build/wam-core
         run: |
           set -euo pipefail
-          make -j2 wamd wam-cli
+          make -C src -j2 wamd wam-cli
 
       - name: Run isolated wallet transaction/state regression
         run: |
