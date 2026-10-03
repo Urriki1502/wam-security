@@ -322,6 +322,8 @@ def main() -> int:
         if before_unspent != after_unspent:
             raise AssertionError(f"{label}: spendable UTXO set changed on failed operation")
 
+    failure_message: str | None = None
+
     try:
         start()
         cli_call("createwallet", "alice")
