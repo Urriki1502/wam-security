@@ -1,0 +1,61 @@
+name: Integration Security - Redis Recovery
+
+on:
+  push:
+    paths:
+      - "scripts/run_integration_redis_recovery.py"
+      - ".github/workflows/integration-redis-recovery.yml"
+  pull_request:
+    paths:
+      - "scripts/run_integration_redis_recovery.py"
+      - ".github/workflows/integration-redis-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redis-atomicity-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Checkout reviewed WAM patch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+          path: wam-coin
+
+      - name: Re-run released payout patch regression gate
+        run: |
+          PYTHONPATH=src python3 scripts/run_integration_payout_patch.py wam-coin \
+            --expected-commit bd71b0bd645286a3867dad6b2bfefd911ec8a5b6 \
+            --cases 5000
+
+      - name: Exercise real Redis MULTI/EXEC crash boundaries
+        run: |
+          python3 scripts/run_integration_redis_recovery.py wam-coin --cases 250
+
+      - name: Upload integration evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: integration-redis-recovery-evidence
+          path: |
+            security-reports/integration-payout-patch.json
+            security-reports/integration-redis-recovery.json
+          if-no-files-found: error
