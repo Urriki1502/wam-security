@@ -40,6 +40,13 @@
       "repository": "https://github.com/actions/download-artifact.git",
       "ref": "refs/tags/v7",
       "commit": "37930b1c2abaa49bbe596cd826c3c89aef350131"
+    },
+    {
+      "name": "actions-attest-build-provenance-v3",
+      "kind": "ci-action",
+      "repository": "https://github.com/actions/attest-build-provenance.git",
+      "ref": "refs/tags/v3",
+      "commit": "977bb373ede98d70efdf65b84cb5f73e068dcc2a"
     }
   ]
 }

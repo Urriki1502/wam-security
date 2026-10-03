@@ -1,60 +1,520 @@
 # WAM Security
 
-**Independent, executable security assurance for WAM Coin.**
+Independent, executable security assurance for WAM Coin.
 
-> Current stage: **V2 — Adversarial Runtime (operational)**  
-> Audited upstream snapshot: `wamcoin-core-dev/wam-coin@012f3d38570de232a750458e9cf6c91e985db6a1`  
-> Framework version: `0.2.0`
+> **Status:** V1 → V7 operational  
+> **Framework version:** `0.7.0`  
+> **Audited WAM snapshot:** `wamcoin-core-dev/wam-coin@012f3d38570de232a750458e9cf6c91e985db6a1`  
+> **Current full-suite result:** **91/91 tests PASS**
 
-WAM already has a security policy, bug bounty, code review, CI and release controls. This project does **not** replace them. Its job is to make important assumptions independently testable and to keep those assumptions true under hostile input, dependency failure and process crashes.
+WAM Security is an independent verification framework for consensus, runtime,
+money movement, release integrity, formal safety properties and continuous
+security monitoring around WAM Coin.
 
-## V1 baseline
+It does **not** replace WAM Core, its maintainers, its security policy, bug bounty,
+release signing or code review. The purpose of this repository is to make
+security assumptions executable, reproducible and independently testable.
 
-V1 remains mandatory underneath V2:
+---
 
-- threat model and release-blocking invariants
-- independent monetary model
-- consensus-constant drift detection
-- payout safety reference model
-- targeted WAM source/supply-chain auditor
-- pinned upstream evidence and baseline drift enforcement
+## Security architecture
 
-## V2 operational gates
+```text
+WAM Core source / release / public health endpoints
+                     |
+                     v
++------------------------------------------------------+
+| V1  Security Baseline                               |
+| V2  Adversarial Runtime                             |
+| V3  Consensus Assurance                             |
+| V4  Money Safety                                    |
+| V5  Supply Chain Fortress                           |
+| V6  Formal & Independent Assurance                  |
+| V7  Continuous Security Fabric                      |
++------------------------------------------------------+
+                     |
+                     v
+        machine-readable security evidence
+                     |
+                     v
+             GREEN / YELLOW / RED
+                     |
+                     v
+              release security gate
+```
 
-| Gate | Status | Evidence |
+The layers are cumulative. Every later stage preserves the guarantees and
+regression coverage established by the earlier stages.
+
+---
+
+## V1 — Security Baseline
+
+V1 establishes the independent security baseline and the first set of executable
+invariants.
+
+Implemented:
+
+- threat model and trust-boundary documentation;
+- monetary reference model;
+- WAM consensus-constant drift detection;
+- payout safety reference model;
+- P2P pre-sync security model;
+- targeted WAM-owned source audit;
+- supply-chain/workflow audit;
+- expected-finding baseline enforcement;
+- machine-readable Markdown and JSON security reports;
+- responsible-disclosure boundary.
+
+Verified at V1 completion:
+
+- **17 unit/invariant tests PASS**
+- pinned WAM source audit PASS
+- baseline drift enforcement PASS
+
+Primary locations:
+
+```text
+src/wam_security/model/
+src/wam_security/audit/
+baseline/
+docs/THREAT_MODEL.md
+docs/INVARIANTS.md
+docs/EVIDENCE.md
+```
+
+---
+
+## V2 — Adversarial Runtime
+
+V2 adds deterministic hostile-input, failure and resource-pressure testing around
+runtime-facing components.
+
+Implemented:
+
+- protocol envelope validation;
+- explicit resource-budget model;
+- deterministic adversarial input generation;
+- connection/message/in-flight limits;
+- dependency watchdog behavior;
+- restart-loop circuit budgeting;
+- payout crash/restart fault matrix;
+- WAM Stratum/API/RPC runtime-control auditing.
+
+Verified at V2 completion:
+
+- **33 unit/invariant tests PASS**
+- **21 crash/failure scenarios PASS**
+- deterministic multi-seed adversarial fuzz PASS
+- runtime-control baseline PASS
+- V1 regression PASS
+
+Primary locations:
+
+```text
+src/wam_security/adversarial/
+src/wam_security/audit/runtime.py
+scripts/run_v2_adversarial.py
+tests/test_fault_matrix.py
+tests/test_protocol_guards.py
+tests/test_resource_budget.py
+tests/test_watchdog.py
+```
+
+---
+
+## V3 — Consensus Assurance
+
+V3 independently models and differentially verifies WAM-specific consensus
+behavior.
+
+Implemented:
+
+- Bitcoin compact-target codec;
+- proof-of-work target-boundary checks;
+- independent DGW model;
+- RandomX seed-height and network-profile model;
+- reorg/epoch-boundary coverage;
+- WAM consensus-semantic source audit;
+- native C++ consensus harness;
+- ASan/UBSan differential runs;
+- build and execution of the actual patched `wamd`;
+- isolated regtest RandomX epoch-transition probe.
+
+Verified at V3 completion:
+
+- **50 unit/invariant tests PASS**
+- **6,684 cross-language consensus vectors PASS**
+- **35 native WAM C++ consensus tests PASS**
+- patched `wamd` build PASS
+- RandomX regtest seed transition PASS
+- V1 regression PASS
+
+Boundary coverage includes:
+
+```text
+height 0 / 1
+199999 / 200000 / 200001
+399999 / 400000 / 400001
+RandomX epoch-1 / epoch / epoch+1
+reorg-sensitive RandomX seed boundaries
+PoW hash == target
+PoW hash == target + 1
+DGW bootstrap / clamp / powLimit behavior
+```
+
+Primary locations:
+
+```text
+src/wam_security/consensus/
+src/wam_security/audit/consensus.py
+src/wam_security/audit/consensus_semantics.py
+native/v3_consensus_harness.cpp
+scripts/run_v3_differential.py
+formal/
+```
+
+---
+
+## V4 — Money Safety
+
+V4 treats payout handling as a distributed-systems safety problem rather than a
+single RPC call.
+
+Implemented:
+
+- durable payout-intent model;
+- deterministic transaction identity before broadcast;
+- persistent raw transaction + txid recovery state;
+- ambiguous-RPC recovery;
+- exactly-once economic-payment invariant;
+- dedicated payout-wallet policy;
+- recipient, batch, fee and daily-spend limits;
+- accounting-conservation checks;
+- atomic Redis accounting reference implementation;
+- current WAM money-path audit;
+- actual patched-`wamd` raw-transaction identity probe.
+
+Verified at V4 completion:
+
+- **64 unit/invariant tests PASS**
+- **15,000 crash/restart payout scenarios PASS**
+- current WAM payment regression tests PASS
+- Redis atomic commit PASS
+- Redis replay rejection PASS
+- failed-precondition rollback PASS
+- patched `wamd` payout-wallet isolation PASS
+- lost-response recovery with identical raw transaction PASS
+- one economic transaction observed after rebroadcast
+- V1 regression PASS
+
+Core invariants:
+
+```text
+one logical payout -> at most one transaction identity
+one logical payout -> at most one accounting commit
+unknown broadcast state -> identity is retained
+accounting commit -> transaction must already be observed
+failed reconciliation -> money movement remains fail-closed
+```
+
+Primary locations:
+
+```text
+src/wam_security/money/
+src/wam_security/audit/money.py
+reference/redis/commit_payment.lua
+scripts/run_v4_money_faults.py
+scripts/run_v4_redis_atomicity.py
+scripts/run_v4_wamd_money_probe.sh
+```
+
+Sensitive unresolved upstream findings are handled through responsible disclosure;
+this README intentionally describes security classes and guarantees rather than
+publishing exploit instructions.
+
+---
+
+## V5 — Supply Chain Fortress
+
+V5 extends assurance from source correctness to release trust.
+
+Implemented:
+
+- deep release/workflow audit;
+- exact reviewed dependency identity lock;
+- remote-ref drift verification;
+- exact GitHub Action commit identities;
+- deterministic release-control evidence;
+- SLSA-style provenance statement generation;
+- SPDX 2.3 SBOM generation;
+- provenance subject-digest verification;
+- deterministic tar.gz reference builder;
+- current WAM packaging reproducibility probe.
+
+Locked identities include:
+
+- Bitcoin Core v28.1;
+- RandomX v1.2.1;
+- checkout/upload/download workflow actions;
+- build-provenance attestation action.
+
+Verified at V5 completion:
+
+- **71 unit/invariant tests PASS**
+- reviewed remote identity lock PASS
+- provenance generation PASS
+- SPDX SBOM generation PASS
+- tamper detection PASS
+- deterministic reference archive PASS
+- current WAM release-path packaging probe PASS
+- V1 regression PASS
+
+The current WAM packaging probe independently demonstrated that two archives can
+contain identical logical payload bytes while the resulting archive bytes differ.
+The reference packager removes that ambiguity by normalizing archive metadata.
+
+Primary locations:
+
+```text
+src/wam_security/supplychain/
+src/wam_security/audit/supply_chain.py
+supply-chain-lock.json
+scripts/verify_v5_remote_identities.py
+scripts/run_v5_release_surface.py
+scripts/run_v5_current_packaging_probe.sh
+```
+
+---
+
+## V6 — Formal & Independent Assurance
+
+V6 adds executable state-machine verification and independent build witnesses.
+
+Implemented:
+
+- payout TLA+ state-machine specification;
+- release TLA+ state-machine specification;
+- independent Python explicit-state checker;
+- deliberate unsafe mutations and counterexample tests;
+- machine-readable critical-review policy;
+- independent-assurance source audit;
+- independent builders on Ubuntu 22.04 and Ubuntu 24.04;
+- byte-for-byte evidence comparison;
+- non-weaponized red-team regression corpus;
+- exact TLA+ tool artifact hash lock.
+
+Verified at V6 completion:
+
+- **77 unit/invariant tests PASS**
+- payout explicit model: **7 distinct states / 20 transitions PASS**
+- release explicit model: **18 distinct states / 28 transitions PASS**
+- **4/4 deliberate unsafe mutations caught**
+- TLA+/TLC payout model PASS
+- TLA+/TLC release model PASS
+- red-team regression corpus **8/8 PASS**
+- Ubuntu 22.04 == Ubuntu 24.04 evidence **byte-for-byte**
+- V1 regression PASS
+
+Formal safety properties include:
+
+```text
+AtMostOneIdentity
+AtMostOneCommit
+UnknownRetainsIdentity
+CommitOnlyAfterSeen
+AttemptNeverForgetsIdentity
+BuildUsesLockedInputs
+ApprovalRequiresEvidence
+PublishRequiresTwoReviews
+PublishRequiresProvenance
+PublishRequiresSBOM
+PublishRequiresLockedInputs
+```
+
+Primary locations:
+
+```text
+formal/
+src/wam_security/formal/
+src/wam_security/audit/independent_assurance.py
+redteam/corpus.json
+review/critical-paths.json
+reference/review/CODEOWNERS.template
+scripts/run_v6_formal.py
+scripts/run_v6_tlc.sh
+scripts/compare_v6_builders.py
+```
+
+---
+
+## V7 — Continuous Security Fabric
+
+V7 converts the previous point-in-time gates into continuously refreshed security
+evidence.
+
+Implemented:
+
+- versioned machine-readable `security-status.json`;
+- GREEN / YELLOW / RED policy engine;
+- hard release blocking on critical failures;
+- WAM source-drift monitoring;
+- fail-closed behavior when source drift cannot be classified;
+- audit-baseline drift monitoring;
+- official explorer health monitoring;
+- live supply-cap verification;
+- explorer/pool chain-height agreement;
+- official pool health monitoring;
+- payout telemetry visibility;
+- latest-release integrity monitoring;
+- scheduled adversarial fuzz and money-fault rotations;
+- scheduled chaos exercises;
+- provenance attestation of trusted security-status artifacts.
+
+Status semantics:
+
+| State | Meaning | Release gate |
 |---|---|---|
-| Full unit / invariant suite | ✅ **33 tests** | `tests/` |
-| Payout crash/restart matrix | ✅ **21 scenarios** | `adversarial/faults.py` |
-| Deterministic hostile-input fuzz | ✅ **4 CI seeds × 2,500 cases** | `adversarial/fuzz.py` |
-| Protocol envelope bounds | ✅ PASS | `adversarial/protocol.py` |
-| Resource budget model | ✅ PASS | `adversarial/resource.py` |
-| Fail-closed dependency watchdog | ✅ PASS | `adversarial/watchdog.py` |
-| Restart-loop circuit budget | ✅ PASS | `adversarial/watchdog.py` |
-| WAM Stratum/API/RPC runtime guard audit | ✅ PASS | `audit/runtime.py` |
-| V1 regression on V2 head | ✅ PASS | GitHub Actions |
-| V2 adversarial matrix | ✅ PASS | GitHub Actions |
+| **GREEN** | All measured gates pass | Allowed |
+| **YELLOW** | Missing/stale/noncritical evidence requires attention | Not automatically blocked |
+| **RED** | A critical invariant failed | **Blocked** |
 
-## What V2 proves
+Verified on the V7 final operational head:
 
-V2 does **not** claim that no denial-of-service or runtime bug exists. It establishes executable reference properties:
+- **91/91 unit + invariant tests PASS**
+- live fabric **8/8 checks PASS**
+- overall status **GREEN**
+- `release_blocked=false`
+- **12,000 adversarial fuzz cases PASS**
+- **9,000 exactly-once money fault cases PASS**
+- **63 crash/resource scenarios PASS**
+- synthetic RED status blocks release
+- synthetic YELLOW status degrades without blocking
+- V6 formal models replay PASS
+- security-status artifact attestation PASS
+- transparency-log upload PASS
+- V1 regression PASS
+- V5 supply-chain regression on V7 head PASS
 
-- oversized/malformed protocol input is rejected with bounded reference work;
-- connection, message-rate and in-flight counters remain inside explicit budgets;
-- ambiguous RPC outcomes never imply "nothing happened";
-- a payout retry retains one deterministic transaction identity;
-- crashes at modeled payout boundaries recover without more than one balance commit;
-- unknown/failed money dependencies pause money movement;
-- repeated restarts are circuit-bounded;
-- reviewed WAM Stratum/API/RPC hardening controls cannot silently disappear without CI detecting drift.
+Live checks:
+
+```text
+source.drift
+audit.baseline
+live.explorer
+consensus.supply
+live.pool
+payout.visibility
+consensus.fork-agreement
+release.integrity
+```
+
+Recurring cadence:
+
+```text
+hourly  -> security-fabric snapshot
+daily   -> adversarial fuzz + money fault rotation
+weekly  -> chaos/release-block proof + formal-model replay
+```
+
+Primary locations:
+
+```text
+src/wam_security/fabric/
+src/wam_security/audit/continuous_fabric.py
+scripts/run_v7_fabric.py
+scripts/run_v7_chaos.py
+scripts/verify_v7_release_gate.py
+.github/workflows/security-v7.yml
+```
+
+---
+
+## Final verification stack
+
+```text
+source
+  |
+  v
+V1 baseline invariants
+  |
+  v
+V2 adversarial runtime
+  |
+  v
+V3 consensus differential + native node
+  |
+  v
+V4 money safety + fault recovery
+  |
+  v
+V5 supply-chain provenance + reproducibility
+  |
+  v
+V6 formal verification + independent builders
+  |
+  v
+V7 continuous monitoring + release gate
+  |
+  v
+machine-readable security evidence
+```
+
+The framework is designed so that a failure in one trust domain cannot be hidden by
+success in another. Source, runtime, consensus, money movement, build provenance,
+formal properties and live operational state are checked independently.
+
+---
+
+## Repository layout
+
+```text
+wam-security/
+├── .github/workflows/        CI and recurring security gates
+├── baseline/                 Reviewed finding baseline
+├── docs/                     Threat model, evidence and V1-V7 design documents
+├── formal/                   TLA+ specifications and TLC configurations
+├── native/                   Native consensus differential harness
+├── redteam/                  Non-weaponized security regression corpus
+├── reference/
+│   ├── redis/                Atomic accounting reference
+│   └── review/               Critical-path review templates
+├── review/                   Machine-readable review policy
+├── scripts/                  Audit, differential, fault, formal and fabric runners
+├── src/wam_security/
+│   ├── adversarial/          Runtime fault and fuzz models
+│   ├── audit/                Source/security control auditors
+│   ├── consensus/            Independent consensus models
+│   ├── fabric/               Continuous status and policy engine
+│   ├── formal/               Explicit-state verification
+│   ├── model/                Baseline monetary/payment/P2P models
+│   ├── money/                Exactly-once payout model
+│   └── supplychain/          Identity, provenance and reproducibility logic
+├── tests/                    Unit, invariant and regression tests
+├── supply-chain-lock.json    Reviewed immutable source/action identities
+├── upstream.lock.json        Audited WAM upstream revision
+├── SECURITY.md               Disclosure policy
+└── pyproject.toml            Python package metadata
+```
+
+---
 
 ## Run locally
 
+Requirements:
+
+- Python 3.10+
+- Git
+- additional native/build dependencies only for the heavyweight V3/V4/V5 gates
+- Java runtime only for TLA+/TLC execution
+
+Run the complete Python test suite:
+
 ```bash
 PYTHONPATH=src python -m unittest discover -s tests -v
-PYTHONPATH=src python scripts/run_v2_adversarial.py --seed 0x57414D --cases 2500
 ```
 
-Audit a WAM checkout:
+Audit a local WAM checkout:
 
 ```bash
 PYTHONPATH=src python -m wam_security.cli audit /path/to/wam-coin \
@@ -62,12 +522,147 @@ PYTHONPATH=src python -m wam_security.cli audit /path/to/wam-coin \
   --target <commit>
 ```
 
-## Design rule
+Run adversarial runtime checks:
 
-`wam-security` stays an **independent verifier**, not another copy of `wam-coin`. The WAM implementation and the security reference model must be able to disagree; otherwise a shared bug can make both sides pass.
+```bash
+PYTHONPATH=src python scripts/run_v2_adversarial.py \
+  --seed 0x57414D \
+  --cases 2500
+```
 
-## Disclosure and safety
+Run consensus differential checks:
 
-Do not publish unresolved high-impact WAM vulnerabilities here. Follow `SECURITY.md` and upstream WAM responsible disclosure. Adversarial tests are restricted to local fixtures, regtest/testnet, or project-owned infrastructure.
+```bash
+PYTHONPATH=src python scripts/run_v3_differential.py --help
+```
 
-See `docs/EVIDENCE.md` for V1, `docs/V2_EVIDENCE.md` for V2, and `docs/ROADMAP.md` for V1 → V7.
+Run money-safety fault testing:
+
+```bash
+PYTHONPATH=src python scripts/run_v4_money_faults.py \
+  --seed 0x57414D \
+  --cases 5000
+```
+
+Verify locked supply-chain identities:
+
+```bash
+PYTHONPATH=src python scripts/verify_v5_remote_identities.py
+```
+
+Run the independent formal checker:
+
+```bash
+PYTHONPATH=src python scripts/run_v6_formal.py
+```
+
+Run TLA+/TLC:
+
+```bash
+bash scripts/run_v6_tlc.sh
+```
+
+Build a continuous security status from a WAM checkout:
+
+```bash
+PYTHONPATH=src python scripts/run_v7_fabric.py /path/to/wam-coin \
+  --report security-reports/security-report.json \
+  --out security-status
+```
+
+Enforce the release gate:
+
+```bash
+python scripts/verify_v7_release_gate.py \
+  security-status/security-status.json \
+  --block-red
+```
+
+---
+
+## Design principles
+
+### Independent verification
+
+The framework intentionally does not copy WAM Core into this repository. Independent
+models must be capable of disagreeing with the implementation; otherwise the same
+defect can be reproduced on both sides and incorrectly pass.
+
+### Fail closed on critical uncertainty
+
+Critical source drift, monetary ambiguity, supply-cap violations and critical
+security-state failures are not converted into success when evidence is missing.
+
+### Deterministic evidence
+
+Critical reference outputs use deterministic serialization, fixed identities and
+cryptographic digests so independent builders can compare evidence byte-for-byte.
+
+### Responsible disclosure
+
+Do not publish unresolved high-impact vulnerabilities or operational exploit
+instructions in public issues or pull requests. Use the disclosure process in
+`SECURITY.md`.
+
+### Read-only public monitoring
+
+Continuous public probes are read-only. The security fabric does not send funds,
+mine through hosted CI, modify public WAM infrastructure or require production
+wallet credentials.
+
+---
+
+## Security evidence
+
+The framework produces and/or verifies:
+
+- security audit reports;
+- expected-finding baselines;
+- consensus differential results;
+- native WAM test results;
+- payout fault-matrix results;
+- Redis atomicity evidence;
+- SBOM documents;
+- build provenance statements;
+- independent-builder comparisons;
+- formal model-checking results;
+- red-team regression results;
+- continuous security-status snapshots;
+- cryptographic status digests;
+- provenance attestations.
+
+Security evidence describes the tested revision and test scope. It is not a claim
+that any software system is free from defects.
+
+---
+
+## Current stage
+
+```text
+V1  Security Baseline                 OPERATIONAL
+V2  Adversarial Runtime               OPERATIONAL
+V3  Consensus Assurance               OPERATIONAL
+V4  Money Safety                      OPERATIONAL
+V5  Supply Chain Fortress             OPERATIONAL
+V6  Formal & Independent Assurance    OPERATIONAL
+V7  Continuous Security Fabric        OPERATIONAL
+```
+
+The V1 → V7 roadmap is complete. Future work should focus on review, upstream
+integration, regression prevention, independent verification and maintenance of
+the continuous evidence chain rather than adding version numbers without a new
+security trust boundary.
+
+See:
+
+- `docs/THREAT_MODEL.md`
+- `docs/INVARIANTS.md`
+- `docs/EVIDENCE.md`
+- `docs/ROADMAP.md`
+- `docs/V2_ADVERSARIAL_RUNTIME.md`
+- `docs/V3_CONSENSUS_ASSURANCE.md`
+- `docs/V4_MONEY_SAFETY.md`
+- `docs/V5_SUPPLY_CHAIN_FORTRESS.md`
+- `docs/V6_FORMAL_INDEPENDENT_ASSURANCE.md`
+- `docs/V7_CONTINUOUS_SECURITY_FABRIC.md`
+- `SECURITY.md`

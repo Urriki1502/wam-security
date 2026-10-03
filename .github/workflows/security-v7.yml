@@ -1,0 +1,144 @@
+name: Security V7 Continuous Security Fabric
+
+on:
+  push:
+    branches:
+      - "security/v7-*"
+  pull_request:
+    paths:
+      - "src/wam_security/fabric/**"
+      - "src/wam_security/audit/continuous_fabric.py"
+      - "scripts/run_v7_*"
+      - "scripts/verify_v7_*"
+      - "tests/test_fabric_policy.py"
+      - "tests/test_continuous_fabric_audit.py"
+      - "tests/test_v7_release_gate.py"
+      - ".github/workflows/security-v7.yml"
+  schedule:
+    - cron: "17 * * * *"
+    - cron: "11 2 * * *"
+    - cron: "29 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: security-v7-${{ github.ref }}-${{ github.event_name }}-${{ github.event.schedule || 'event' }}
+  cancel-in-progress: false
+
+jobs:
+  fabric:
+    name: V7 continuous fabric status
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compile and run full invariant suite
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Fetch current WAM main with audit history
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach origin/main
+          git -C wam-coin fetch origin 012f3d38570de232a750458e9cf6c91e985db6a1
+          echo "WAM_HEAD=$(git -C wam-coin rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Audit current WAM source
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin             --out security-reports             --target "$WAM_HEAD"
+
+      - name: Fetch current WAM release metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fsSL             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             "https://api.github.com/repos/wamcoin-core-dev/wam-coin/releases?per_page=10"             -o wam-releases.json
+          python -m json.tool wam-releases.json >/dev/null
+
+      - name: Build live machine-readable security status
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v7_fabric.py wam-coin             --report security-reports/security-report.json             --release-json wam-releases.json             --out security-status
+          cat security-status/security-status.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce release block on RED
+        run: |
+          set -euo pipefail
+          python scripts/verify_v7_release_gate.py             security-status/security-status.json             --block-red
+
+      - name: Upload security status and audit evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v7-security-status-${{ github.run_id }}
+          path: |
+            security-status/
+            security-reports/
+            wam-releases.json
+          if-no-files-found: error
+
+      - name: Attest machine-readable security status
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: security-status/security-status.json
+
+  continuous-fuzz:
+    name: V7 daily adversarial fuzz and money faults
+    if: github.event_name != 'schedule' || github.event.schedule == '11 2 * * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        seed:
+          - "0x57414D"
+          - "0xC0FFEE"
+          - "0x7F00D"
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Rotate protocol/resource adversarial fuzz
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v2_adversarial.py             --seed "${{ matrix.seed }}"             --cases 4000
+
+      - name: Rotate exactly-once money fault matrix
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v4_money_faults.py             --seed "${{ matrix.seed }}"             --cases 3000
+
+  chaos:
+    name: V7 weekly chaos and release-block proof
+    if: github.event_name != 'schedule' || github.event.schedule == '29 3 * * 0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Prove RED blocks and YELLOW degrades
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v7_chaos.py
+
+      - name: Re-run formal state-machine invariants
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v6_formal.py
