@@ -584,16 +584,51 @@ def main() -> int:
         )
         if not imported or not bool(imported[0].get("success")):
             raise AssertionError(f"watch-only descriptor import failed: {imported}")
+        watcher_info = jcall("getwalletinfo", wallet="watcher")
+        if bool(watcher_info.get("private_keys_enabled", True)):
+            raise AssertionError("watch-only wallet unexpectedly has private keys enabled")
+
         watcher_unspent = jcall("listunspent", "0", "9999999", wallet="watcher")
         watched = [u for u in watcher_unspent if u.get("address") == bob_receive]
         if not watched:
             raise AssertionError("watch-only wallet did not discover confirmed Bob outputs")
-        if any(bool(u.get("spendable")) for u in watched):
-            raise AssertionError("watch-only imported outputs unexpectedly marked spendable")
+
+        # Descriptor wallets classify scripts present in their descriptor map as
+        # ISMINE_SPENDABLE even when the descriptor itself contains no private
+        # key (for example addr(...)). Therefore listunspent.spendable is not a
+        # sufficient key-ownership assertion for this case. Test the real
+        # security property directly: the disable-private-keys wallet must not
+        # be able to complete a signature for the imported output.
+        watched_coin = watched[0]
+        watched_amount = dec(watched_coin["amount"])
+        signing_amount = watched_amount - Decimal("0.001")
+        if signing_amount <= 0:
+            raise AssertionError("watch-only fixture amount too small for signing probe")
+        signing_dest = cli_call("getnewaddress", wallet="bob").stdout.strip()
+        watch_raw = cli_call(
+            "createrawtransaction",
+            json.dumps([{"txid": watched_coin["txid"], "vout": int(watched_coin["vout"])}]),
+            json.dumps([{signing_dest: float(signing_amount)}]),
+        ).stdout.strip()
+        watch_sign = cli_call(
+            "signrawtransactionwithwallet",
+            watch_raw,
+            wallet="watcher",
+            check=False,
+        )
+        watch_sign_complete = False
+        if watch_sign.returncode == 0:
+            watch_sign_result = json.loads(watch_sign.stdout)
+            watch_sign_complete = bool(watch_sign_result.get("complete"))
+        if watch_sign_complete:
+            raise AssertionError("disable-private-keys watch-only wallet unexpectedly completed signing")
+
         evidence["states"]["watch_only"] = {
             "descriptor_imported": True,
+            "private_keys_enabled": False,
             "observed_outputs": len(watched),
-            "all_observed_outputs_nonspendable": True,
+            "listunspent_spendable_flags": sorted({bool(u.get("spendable")) for u in watched}),
+            "signing_complete": False,
         }
 
         psbt_address = cli_call("getnewaddress", wallet="bob").stdout.strip()
@@ -671,7 +706,7 @@ def main() -> int:
             "confirmed_transaction_reorgs_to_nonconfirmed_state": True,
             "reconfirmation_does_not_duplicate_wallet_history": True,
             "rescan_preserves_balance_and_transaction_identities": True,
-            "watch_only_import_discovers_nonspendable_outputs": True,
+            "watch_only_import_cannot_sign_without_private_keys": True,
             "locked_encrypted_wallet_does_not_complete_signing": True,
             "unlocked_encrypted_wallet_can_complete_signing": True,
             "backup_restore_preserves_balance_and_history": True,
