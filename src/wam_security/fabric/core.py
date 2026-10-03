@@ -73,5 +73,5 @@ def build_status(
         "checks": [asdict(c) for c in ordered],
         "metrics": metrics or {},
     }
-    payload["status_sha256"] = status_digest(payload)
+    payload["body_sha256"] = status_digest(payload)
     return payload
