@@ -1,0 +1,157 @@
+name: Security V6 Formal and Independent Assurance
+
+on:
+  push:
+    branches:
+      - "security/v6-*"
+  pull_request:
+    paths:
+      - "formal/**"
+      - "redteam/**"
+      - "review/**"
+      - "reference/review/**"
+      - "src/wam_security/formal/**"
+      - "src/wam_security/audit/independent_assurance.py"
+      - "scripts/run_v6_*"
+      - "scripts/verify_v6_assurance_findings.py"
+      - "scripts/compare_v6_builders.py"
+      - "tests/test_formal_models.py"
+      - "tests/test_independent_assurance_audit.py"
+      - ".github/workflows/security-v6.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: security-v6-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  WAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
+
+jobs:
+  formal:
+    name: V6 TLA+ and explicit-state formal checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compile and run full invariant suite
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Run independent explicit-state checker
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v6_formal.py
+
+      - name: Install Java runtime for TLC
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq default-jre-headless curl
+          java -version
+
+      - name: Run TLA+ TLC model checker
+        run: |
+          set -euo pipefail
+          bash scripts/run_v6_tlc.sh
+
+  assurance-audit:
+    name: V6 WAM assurance audit and red-team corpus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch exact WAM target
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$WAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$WAM_SHA"
+
+      - name: Audit formal and independent assurance gaps
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin             --out security-reports             --target "$WAM_SHA"
+          python scripts/verify_v6_assurance_findings.py
+
+      - name: Replay non-weaponized red-team regression corpus
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v6_redteam_corpus.py             wam-coin             --report security-reports/security-report.json
+
+  independent-builder:
+    name: V6 independent builder ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch exact WAM target
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$WAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$WAM_SHA"
+
+      - name: Build deterministic release-control witness
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v5_release_surface.py wam-coin             --out v6-builder
+
+      - name: Upload independent builder witness
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: builder-${{ matrix.os }}
+          path: v6-builder/
+          if-no-files-found: error
+
+  compare-builders:
+    name: V6 compare independent builders
+    needs:
+      - independent-builder
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Download Ubuntu 22.04 witness
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: builder-ubuntu-22.04
+          path: builder-a
+
+      - name: Download Ubuntu 24.04 witness
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: builder-ubuntu-24.04
+          path: builder-b
+
+      - name: Require byte-identical independent evidence
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/compare_v6_builders.py builder-a builder-b
