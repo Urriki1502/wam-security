@@ -1,0 +1,11 @@
+{
+  "schema": "wam-security-baseline/v1",
+  "target": "012f3d38570de232a750458e9cf6c91e985db6a1",
+  "expected_finding_ids": [
+    "WS-P2P-001",
+    "WS-POOL-001",
+    "WS-POOL-002",
+    "WS-SC-001",
+    "WS-SC-002"
+  ]
+}

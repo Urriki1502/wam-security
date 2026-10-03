@@ -1,0 +1,69 @@
+name: Security V1
+
+on:
+  push:
+    branches:
+      - main
+      - "security/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
+
+jobs:
+  baseline:
+    name: V1 security baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Runtime identity
+        run: |
+          set -euo pipefail
+          python --version
+          git --version
+          echo "security commit: $GITHUB_SHA"
+          echo "upstream commit: $UPSTREAM_SHA"
+
+      - name: Compile Python
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+
+      - name: Unit and invariant tests
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Fetch pinned WAM source
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Audit pinned WAM source
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin             --out security-reports             --target "$UPSTREAM_SHA"
+
+      - name: Verify expected baseline
+        run: |
+          set -euo pipefail
+          python scripts/verify_baseline.py
+
+      - name: Publish report to job summary
+        if: always()
+        run: |
+          if [ -f security-reports/security-report.md ]; then
+            cat security-reports/security-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,0 +1,7 @@
+{
+  "schema": "wam-security-upstream-lock/v1",
+  "repository": "https://github.com/wamcoin-core-dev/wam-coin",
+  "commit": "012f3d38570de232a750458e9cf6c91e985db6a1",
+  "observed_utc": "2026-10-03",
+  "purpose": "Pinned WAM source snapshot audited by V1 baseline"
+}
