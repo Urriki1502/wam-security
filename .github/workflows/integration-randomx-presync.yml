@@ -3,14 +3,22 @@ name: Integration Security - RandomX Presync
 on:
   push:
     paths:
-      - "src/wam_security/consensus/presync.py"
-      - "tests/test_randomx_presync.py"
+      - "src/wam_security/model/presync.py"
+      - "src/wam_security/consensus/randomx.py"
+      - "src/wam_security/audit/source.py"
+      - "tests/test_presync_model.py"
+      - "tests/test_randomx_consensus.py"
+      - "tests/test_source_audit.py"
       - "scripts/run_integration_randomx_presync.py"
       - ".github/workflows/integration-randomx-presync.yml"
   pull_request:
     paths:
-      - "src/wam_security/consensus/presync.py"
-      - "tests/test_randomx_presync.py"
+      - "src/wam_security/model/presync.py"
+      - "src/wam_security/consensus/randomx.py"
+      - "src/wam_security/audit/source.py"
+      - "tests/test_presync_model.py"
+      - "tests/test_randomx_consensus.py"
+      - "tests/test_source_audit.py"
       - "scripts/run_integration_randomx_presync.py"
       - ".github/workflows/integration-randomx-presync.yml"
   workflow_dispatch:
