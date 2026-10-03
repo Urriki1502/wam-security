@@ -2,10 +2,12 @@
 
 Independent, executable security assurance for WAM Coin.
 
-> **Status:** V1 → V7 operational  
+> **Framework status:** V1 → V7 operational  
 > **Framework version:** `0.7.0`  
-> **Audited WAM snapshot:** `wamcoin-core-dev/wam-coin@012f3d38570de232a750458e9cf6c91e985db6a1`  
-> **Current full-suite result:** **91/91 tests PASS**
+> **Framework baseline snapshot:** `wamcoin-core-dev/wam-coin@012f3d38570de232a750458e9cf6c91e985db6a1`  
+> **Current integration-security target:** `wamcoin-core-dev/wam-coin@bd71b0bd645286a3867dad6b2bfefd911ec8a5b6`  
+> **Current full-suite result:** **91/91 tests PASS**  
+> **Review state:** **FROZEN FOR MAINTAINER REVIEW** — no further scope expansion is planned for this revision.
 
 WAM Security is an independent verification framework for consensus, runtime,
 money movement, release integrity, formal safety properties and continuous
@@ -14,6 +16,28 @@ security monitoring around WAM Coin.
 It does **not** replace WAM Core, its maintainers, its security policy, bug bounty,
 release signing or code review. The purpose of this repository is to make
 security assumptions executable, reproducible and independently testable.
+
+## Maintainer quick status
+
+The V1 → V7 framework is the long-lived assurance baseline. The integration-security
+track then points those invariants at the exact reviewed WAM implementation and
+validates high-risk lifecycle boundaries with deterministic local evidence.
+
+| Area | Review | Result | Maintainer status |
+|---|---:|---|---|
+| RandomX header pre-sync | [PR #10](https://github.com/Urriki1502/wam-security/pull/10) | **PASS** | Evidence complete |
+| Startup / reindex RandomX state | [PR #11](https://github.com/Urriki1502/wam-security/pull/11) | **PASS** | Evidence complete |
+| Pool job / Stratum template integrity | [PR #12](https://github.com/Urriki1502/wam-security/pull/12) | **Harness PASS** | Upstream maintainer follow-up pending |
+| Wallet transaction / state integrity | [PR #13](https://github.com/Urriki1502/wam-security/pull/13) | **PASS** | Evidence complete |
+
+All integration-security work in this review track is constrained to exact source
+revisions, local fixtures, mocked failure boundaries, isolated regtest, and GitHub
+Actions. It does not use real wallets, real funds, public mining infrastructure,
+third-party credentials, or disruptive external testing.
+
+For detailed evidence, scope boundaries, classifications, run IDs and artifact
+digests, open the corresponding Draft PR. Sensitive unresolved implementation
+details remain subject to `SECURITY.md`.
 
 ---
 
@@ -655,18 +679,50 @@ security trust boundary.
 
 ## Integration-security maintenance track
 
-Released upstream fixes are now reviewed by pointing the existing invariants at the
-real WAM source and its regression tests. The first target is payout-safety commit
-`bd71b0bd645286a3867dad6b2bfefd911ec8a5b6`.
+The integration-security track is the maintainer-facing bridge between the independent
+V1 → V7 assurance framework and the exact WAM implementation under review.
+
+Current locked target:
+
+```text
+wamcoin-core-dev/wam-coin
+bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+```
+
+Coverage in the current frozen review set includes:
+
+- payout recovery and exactly-once accounting regression;
+- RandomX header pre-sync lifecycle;
+- startup, restart, `-reindex-chainstate` and full `-reindex` state recovery;
+- pool job / Stratum template / RandomX binding and stale-job lifecycle;
+- wallet transaction construction, fee/change conservation, broadcast ambiguity,
+  restart, rejection, reorg, rescan, locking and backup/restore behavior.
+
+The integration gates reuse the existing independent invariants rather than replacing
+them. A green workflow is not treated as sufficient by itself: the exact target,
+source contract, native/runtime behavior, scope boundaries and machine-readable
+evidence must agree.
+
+Representative local entry point:
 
 ```bash
 PYTHONPATH=src python scripts/run_integration_payout_patch.py /path/to/wam-coin
 ```
 
-This gate combines the independent V4 money model, deterministic crash/restart fault
-cases, WAM's released money-RPC failover tests and WAM's payout-safety tests, then
-writes machine-readable integration evidence. Unresolved high-impact hypotheses stay
-private until maintainer triage/fix; see `docs/INTEGRATION_SECURITY.md`.
+Current review PRs:
+
+- [#10 — RandomX header pre-sync invariants](https://github.com/Urriki1502/wam-security/pull/10)
+- [#11 — startup and reindex RandomX state](https://github.com/Urriki1502/wam-security/pull/11)
+- [#12 — pool job and Stratum template integrity](https://github.com/Urriki1502/wam-security/pull/12)
+- [#13 — wallet transaction and state integrity](https://github.com/Urriki1502/wam-security/pull/13)
+
+PR #12 intentionally remains a maintainer-follow-up point. The README does not
+publish unnecessary unresolved implementation detail; the regression harness is
+the closure mechanism for any upstream fix.
+
+No additional V-number is planned for this review cycle. New work should only open
+a new track when it crosses a distinct security trust boundary or validates an
+upstream change against existing invariants.
 
 See:
 
