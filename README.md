@@ -653,6 +653,21 @@ integration, regression prevention, independent verification and maintenance of
 the continuous evidence chain rather than adding version numbers without a new
 security trust boundary.
 
+## Integration-security maintenance track
+
+Released upstream fixes are now reviewed by pointing the existing invariants at the
+real WAM source and its regression tests. The first target is payout-safety commit
+`bd71b0bd645286a3867dad6b2bfefd911ec8a5b6`.
+
+```bash
+PYTHONPATH=src python scripts/run_integration_payout_patch.py /path/to/wam-coin
+```
+
+This gate combines the independent V4 money model, deterministic crash/restart fault
+cases, WAM's released money-RPC failover tests and WAM's payout-safety tests, then
+writes machine-readable integration evidence. Unresolved high-impact hypotheses stay
+private until maintainer triage/fix; see `docs/INTEGRATION_SECURITY.md`.
+
 See:
 
 - `docs/THREAT_MODEL.md`

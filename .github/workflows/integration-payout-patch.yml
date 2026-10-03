@@ -1,0 +1,50 @@
+name: Integration Security - Payout Patch
+
+on:
+  push:
+    paths:
+      - "scripts/run_integration_payout_patch.py"
+      - "src/wam_security/money/**"
+      - "tests/test_money_safety.py"
+      - "docs/INTEGRATION_SECURITY.md"
+      - ".github/workflows/integration-payout-patch.yml"
+  pull_request:
+    paths:
+      - "scripts/run_integration_payout_patch.py"
+      - "src/wam_security/money/**"
+      - "tests/test_money_safety.py"
+      - "docs/INTEGRATION_SECURITY.md"
+      - ".github/workflows/integration-payout-patch.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  released-patch-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Checkout reviewed WAM patch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+          path: wam-coin
+
+      - name: Run integration-security payout review
+        run: |
+          PYTHONPATH=src python3 scripts/run_integration_payout_patch.py wam-coin \
+            --expected-commit bd71b0bd645286a3867dad6b2bfefd911ec8a5b6 \
+            --cases 5000
+
+      - name: Upload integration evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: integration-payout-patch-evidence
+          path: security-reports/integration-payout-patch.json
+          if-no-files-found: error
