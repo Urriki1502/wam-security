@@ -7,6 +7,11 @@
     "WS-ASSURE-203",
     "WS-ASSURE-204",
     "WS-ASSURE-205",
+    "WS-FABRIC-301",
+    "WS-FABRIC-302",
+    "WS-FABRIC-303",
+    "WS-FABRIC-304",
+    "WS-FABRIC-305",
     "WS-MONEY-101",
     "WS-MONEY-102",
     "WS-MONEY-103",
@@ -28,4 +33,4 @@
     "WS-SC-108",
     "WS-SC-109"
   ]
-}
+}\n

@@ -13,7 +13,7 @@ from wam_security.audit.money import audit_money_safety
 from wam_security.audit.source import audit_wam_source
 from wam_security.audit.workflow import audit_workflows
 from wam_security.audit.supply_chain import audit_supply_chain
-from wam_security.audit.independent_assurance import audit_independent_assurance
+from wam_security.audit.independent_assurance import audit_independent_assurance\nfrom wam_security.audit.continuous_fabric import audit_continuous_fabric
 from wam_security.report import write_reports
 
 
@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         + audit_wam_source(args.checkout)
         + audit_workflows(args.checkout)
         + audit_supply_chain(args.checkout)
-        + audit_independent_assurance(args.checkout)
+        + audit_independent_assurance(args.checkout)\n        + audit_continuous_fabric(args.checkout)
     )
     write_reports(findings, args.out, args.target)
     for f in findings:
