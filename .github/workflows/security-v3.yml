@@ -1,0 +1,195 @@
+name: Security V3 Consensus
+
+on:
+  push:
+    branches:
+      - "security/v3-*"
+  pull_request:
+    paths:
+      - "src/wam_security/consensus/**"
+      - "src/wam_security/audit/consensus_semantics.py"
+      - "native/v3_consensus_harness.cpp"
+      - "scripts/run_v3_differential.py"
+      - "scripts/verify_v3_semantics.py"
+      - "tests/test_compact.py"
+      - "tests/test_dgw.py"
+      - "tests/test_randomx_consensus.py"
+      - "tests/test_consensus_semantics_audit.py"
+      - ".github/workflows/security-v3.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: security-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
+
+jobs:
+  differential:
+    name: V3 ASan/UBSan differential seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        seed:
+          - "0x57414D"
+          - "0xC0FFEE"
+          - "0xD6A3"
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install native harness dependency
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libboost-dev clang
+
+      - name: Compile all Python
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+
+      - name: Run full unit / invariant suite
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Build C++ harness with ASan + UBSan
+        run: |
+          set -euo pipefail
+          mkdir -p build-v3
+          clang++ -std=c++20 -O1 -g             -fsanitize=address,undefined             -fno-omit-frame-pointer             -Wall -Wextra -Werror             native/v3_consensus_harness.cpp             -o build-v3/v3-consensus-harness
+
+      - name: Cross-language differential vectors
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v3_differential.py             --harness ./build-v3/v3-consensus-harness             --seed "${{ matrix.seed }}"             --compact-cases 300             --seed-cases 300             --dgw-cases 200
+
+  source-semantics:
+    name: V3 pinned WAM consensus semantics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch pinned WAM source
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Audit V3 consensus semantics
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin             --out security-reports             --target "$UPSTREAM_SHA"
+          python scripts/verify_v3_semantics.py
+
+      - name: Publish audit summary
+        if: always()
+        run: |
+          if [ -f security-reports/security-report.md ]; then
+            cat security-reports/security-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  patched-node-regtest:
+    name: V3 patched wamd regtest consensus probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install WAM build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq             build-essential libtool autotools-dev automake pkg-config             bsdmainutils cmake curl git python3             libevent-dev libboost-dev libsqlite3-dev
+
+      - name: Fetch exact WAM security target
+        run: |
+          set -euo pipefail
+          git clone https://github.com/wamcoin-core-dev/wam-coin.git wam-src
+          git -C wam-src checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C wam-src rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Fetch pinned Bitcoin Core + RandomX and patch
+        working-directory: wam-src
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Configure patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          ./autogen.sh >/dev/null
+          ./configure             --without-gui             --disable-zmq             --disable-tests-fuzz-binary             --with-incompatible-bdb             CPPFLAGS="-I$GITHUB_WORKSPACE/wam-src/build/randomx/src"             LIBS="$GITHUB_WORKSPACE/wam-src/build/randomx/build/librandomx.a -lpthread"             >/dev/null
+
+      - name: Build patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          make -j2
+
+      - name: Run WAM native consensus tests
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          ./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests,wam_vesting_tests
+
+      - name: Probe RandomX epoch transition on isolated regtest
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          DATADIR="$RUNNER_TEMP/wam-v3-regtest"
+          mkdir -p "$DATADIR"
+          RPC_USER=v3ci
+          RPC_PASS=v3ci-only
+          cleanup() {
+            ./src/wam-cli -regtest -datadir="$DATADIR"               -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" stop >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          ./src/wamd -regtest -datadir="$DATADIR"             -server=1 -listen=0 -dnsseed=0 -discover=0             -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS"             -daemonwait
+
+          CLI=(./src/wam-cli -regtest -datadir="$DATADIR" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS")
+          "${CLI[@]}" -rpcwait getblockchaininfo >/dev/null
+          "${CLI[@]}" createwallet v3ci >/dev/null
+          ADDR=$("${CLI[@]}" -rpcwallet=v3ci getnewaddress)
+
+          INFO0=$("${CLI[@]}" getrandomxinfo)
+          python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["epoch_blocks"]==64 and d["epoch_lag"]==4 and d["seed_height"]==0' <<<"$INFO0"
+
+          "${CLI[@]}" generatetoaddress 66 "$ADDR" >/dev/null
+          INFO66=$("${CLI[@]}" getrandomxinfo)
+          python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["seed_height"]==0' <<<"$INFO66"
+
+          "${CLI[@]}" generatetoaddress 1 "$ADDR" >/dev/null
+          INFO67=$("${CLI[@]}" getrandomxinfo)
+          H64=$("${CLI[@]}" getblockhash 64)
+          INFO67="$INFO67" H64="$H64" python3 - <<'PY'
+          import json, os
+          expected = os.environ["H64"]
+          d = json.loads(os.environ["INFO67"])
+          assert d["seed_height"] == 64, d
+          assert d["seed_hash"] == expected, (d["seed_hash"], expected)
+          assert d["bootstrap"] is False
+          print("patched wamd RandomX regtest transition: PASS")
+          PY
