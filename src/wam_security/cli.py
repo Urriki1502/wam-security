@@ -9,6 +9,7 @@ import sys
 from wam_security.audit.consensus import audit_consensus_constants
 from wam_security.audit.consensus_semantics import audit_consensus_semantics
 from wam_security.audit.runtime import audit_runtime_controls
+from wam_security.audit.money import audit_money_safety
 from wam_security.audit.source import audit_wam_source
 from wam_security.audit.workflow import audit_workflows
 from wam_security.report import write_reports
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     findings = (
         audit_consensus_constants(args.checkout)
         + audit_consensus_semantics(args.checkout)
+        + audit_money_safety(args.checkout)
         + audit_runtime_controls(args.checkout)
         + audit_wam_source(args.checkout)
         + audit_workflows(args.checkout)
