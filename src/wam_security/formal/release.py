@@ -91,9 +91,15 @@ def invariants() -> dict[str, callable]:
 
 def mutant_one_review_publish(state: ReleaseState) -> Iterable[tuple[str, ReleaseState]]:
     yield from successors(state)
-    if state.built and state.reviews >= 1 and not state.published:
+    if (
+        state.built
+        and state.provenance
+        and state.sbom
+        and state.reviews == 1
+        and not state.published
+    ):
         yield "MUTANT-publish-one-review", replace(
-            state, approved=True, published=True
+            state, published=True
         )
 
 
