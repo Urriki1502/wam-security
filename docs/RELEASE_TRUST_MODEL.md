@@ -22,12 +22,7 @@ valid signature from that replacement key.
 
 ## Trust-root observation
 
-`SECURITY.md` states that the signing fingerprint is published there and "in no
-other place". The verifier necessarily also embeds the same fingerprint literal in
-`EXPECT` so that importing a substituted `SIGNING-KEY.asc` is not circular trust.
-That copy is useful implementation pinning, but it is not an independent trust
-anchor: the repository, key file and verifier can all be replaced together by one
-repository/distribution compromise.
+`SECURITY.md` states that the signing fingerprint is published there and "in no\nother place". At the locked commit that statement is not literally true: the same\nfingerprint also appears in release/signing scripts, generated site material, release\nnotes and announcement text. The verifier necessarily embeds it in `EXPECT` so that\nimporting a substituted `SIGNING-KEY.asc` is not circular trust. These repository\ncopies are useful consistency pins, but none is an independent trust anchor: one\nrepository/distribution compromise can replace the repository text, key file and\nverifier together.
 
 The problem is therefore not signature verification. The cryptographic path already
 checks the correct things. The missing property is an independently administered
