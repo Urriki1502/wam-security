@@ -21,7 +21,7 @@ def resp(*parts: object) -> bytes:
     out = [f"*{len(parts)}\r\n".encode()]
     for part in parts:
         b = str(part).encode("utf-8")
-        out.append(f"$${len(b)}\r\n".encode())
+        out.append(f"${len(b)}\r\n".encode())
         out.append(b + b"\r\n")
     return b"".join(out)
 
