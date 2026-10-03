@@ -1,0 +1,108 @@
+name: Security V2 Adversarial
+
+on:
+  push:
+    branches:
+      - "security/v2-*"
+  pull_request:
+    paths:
+      - "src/wam_security/adversarial/**"
+      - "src/wam_security/audit/runtime.py"
+      - "tests/test_fault_matrix.py"
+      - "tests/test_fuzz_smoke.py"
+      - "tests/test_protocol_guards.py"
+      - "tests/test_resource_budget.py"
+      - "tests/test_runtime_audit.py"
+      - "scripts/run_v2_adversarial.py"
+      - "scripts/verify_v2_runtime.py"
+      - ".github/workflows/security-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
+
+jobs:
+  unit-and-fault:
+    name: V2 unit + fault matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compile
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+
+      - name: Unit and invariant suite
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Crash matrix
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v2_adversarial.py --seed 0x57414D --cases 500
+
+  adversarial-fuzz:
+    name: V2 fuzz seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        seed:
+          - "0x57414D"
+          - "0x352"
+          - "0xC0FFEE"
+          - "0xDEADBEEF"
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Deterministic hostile-input fuzz
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v2_adversarial.py \
+            --seed "${{ matrix.seed }}" \
+            --cases 2500
+
+  runtime-regression:
+    name: V2 WAM runtime guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch pinned WAM source
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Audit runtime controls
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin \
+            --out security-reports \
+            --target "$UPSTREAM_SHA"
+          python scripts/verify_v2_runtime.py
+
+      - name: Publish runtime report
+        if: always()
+        run: |
+          if [ -f security-reports/security-report.md ]; then
+            cat security-reports/security-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
