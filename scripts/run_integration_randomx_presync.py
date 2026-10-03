@@ -129,7 +129,8 @@ def patched_tree_contract(core: Path) -> tuple[dict[str, bool], list[str]]:
         "process_headers_runs_batch_gate_before_low_work_presync":
             -1 < check_headers_pos < continue_presync_pos < start_presync_pos,
         "claimed_headers_work_is_derived_from_nbits_without_randomx_evidence":
-            "GetBlockProof(CBlockIndex(header))" in claimed
+            "CBlockIndex dummy(header);" in claimed
+            and "GetBlockProof(dummy)" in claimed
             and "GetRandomXPoWHash" not in claimed,
         "presync_accumulates_claimed_header_work":
             "m_current_chain_work += GetBlockProof(CBlockIndex(current));" in presync_one,
