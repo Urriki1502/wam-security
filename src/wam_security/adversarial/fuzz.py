@@ -95,7 +95,7 @@ def run_adversarial_fuzz(seed: int, cases: int = 1_000) -> FuzzStats:
 
         ip = ips[i % len(ips)]
         try:
-            resources.record_message(ip, len(payload), (i % 40) * 250)
+            resources.record_message(ip, len(payload), i * 250)
             resources.begin_request(ip)
             resources.end_request(ip)
         except BudgetExceeded:
