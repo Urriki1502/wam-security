@@ -344,7 +344,7 @@ def main() -> int:
             "patched_tree_contract": tree_checks,
             "unit_patterns": list(patterns),
             "synthetic_matrix": matrix,
-            "native_regtest": "covered by Security V3 patched-wamd job on this PR",
+            "native_regtest": "covered by Integration Security patched-wamd isolated regtest job on this PR",
             "dgw_native_regtest_limit": (
                 "regtest sets fPowNoRetargeting, so DGW transition behavior is covered "
                 "by executable model tests plus patched-source contract rather than regtest retargeting"
