@@ -74,7 +74,7 @@ It creates disposable alice, bob and watch-only wallets and verifies:
 - deterministic zero-fee mempool rejection leaves its input spendable;
 - confirmed to reorged/unconfirmed to confirmed lifecycle;
 - rescan preserves balances and transaction identities;
-- watch-only import discovers outputs but does not make them spendable;
+- watch-only descriptor import discovers the expected outputs, keeps `private_keys_enabled=false`, and cannot complete signing for those outputs;
 - encrypted/locked wallet cannot complete signing while an explicitly unlocked
   wallet can;
 - local backup/restore preserves balance and transaction history;
@@ -107,3 +107,14 @@ green. Closure requires:
 4. evidence artifacts to contain no wallet secret material;
 5. any failed invariant to remain reproducible and narrowly classified instead
    of being hidden or converted into an expected pass.
+
+
+### Descriptor watch-only note
+
+For the pinned Bitcoin Core v28.1 descriptor wallet, `DescriptorScriptPubKeyMan::IsMine()`
+classifies scripts present in its descriptor map as `ISMINE_SPENDABLE`, so the
+`listunspent.spendable` field alone is not used as proof of private-key
+ownership in this harness. The security assertion is made at the signing
+boundary instead: the disposable wallet is created with private keys disabled,
+the imported output is discovered, and an actual wallet signing attempt must
+not complete.
