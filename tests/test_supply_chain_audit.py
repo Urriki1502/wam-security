@@ -8,7 +8,7 @@ from wam_security.audit.supply_chain import audit_supply_chain
 RELEASE = r"""
 name: release
 permissions:
-  contents: write
+  contents: write        # release publication token
 jobs:
   build:
     steps:

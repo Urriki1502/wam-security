@@ -59,7 +59,11 @@ def audit_supply_chain(root: str | Path) -> list[Finding]:
     findings: list[Finding] = []
 
     pre_jobs = release.split("\njobs:", 1)[0] if release else ""
-    if re.search(r"(?m)^permissions:\s*$.*?^\s+contents:\s*write\s*$", pre_jobs, re.S):
+    workflow_write = any(
+        re.fullmatch(r"\s*contents:\s*write(?:\s+#.*)?", line)
+        for line in pre_jobs.splitlines()
+    )
+    if workflow_write:
         findings.append(_finding(
             "WS-SC-101",
             "HIGH",
