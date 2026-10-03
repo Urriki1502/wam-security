@@ -38,6 +38,20 @@ def source_drift_check(
             {"head": current_head, "changed_paths": []},
         )
 
+    if not paths or "<diff-unavailable>" in paths:
+        return Check(
+            "source.drift",
+            "source",
+            "FAIL",
+            True,
+            "WAM main moved but the fabric could not classify the source diff.",
+            {
+                "head": current_head,
+                "audited_head": audited_head,
+                "changed_paths": paths,
+            },
+        )
+
     critical = [
         path for path in paths
         if any(path == prefix or path.startswith(prefix) for prefix in CRITICAL_PATH_PREFIXES)
