@@ -1,0 +1,21 @@
+{
+  "schema": "wam-security-status/v1",
+  "framework_version": "0.2.0",
+  "stage": "V2",
+  "name": "Adversarial Runtime",
+  "status": "operational",
+  "upstream_commit": "012f3d38570de232a750458e9cf6c91e985db6a1",
+  "unit_tests": 33,
+  "payout_crash_scenarios": 21,
+  "main_fuzz_seeds": [
+    "0x57414D",
+    "0x352",
+    "0xC0FFEE",
+    "0xDEADBEEF"
+  ],
+  "fuzz_cases_per_main_seed": 2500,
+  "runtime_guard_regression": "pass",
+  "v1_regression": "pass",
+  "functional_v2_run_id": 37088771680,
+  "v1_regression_run_id": 37088771687
+}
