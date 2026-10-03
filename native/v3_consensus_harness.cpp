@@ -117,6 +117,13 @@ static uint32_t DGW(
     return TargetToCompact(next);
 }
 
+static bool CheckPow(const cpp_int& hash, uint32_t bits, const cpp_int& pow_limit) {
+    bool negative=false, overflow=false;
+    cpp_int target = CompactToTarget(bits, &negative, &overflow);
+    if (negative || overflow || target == 0 || target > pow_limit || hash < 0) return false;
+    return hash <= target;
+}
+
 static int64_t SeedHeight(int64_t epoch, int64_t lag, int64_t height) {
     if (epoch <= 0 || lag < 0 || lag >= epoch || height < 0) throw std::runtime_error("bad seed args");
     if (height <= lag) return 0;
@@ -144,6 +151,12 @@ int main(int argc, char** argv) {
         if (mode == "target-to-compact") {
             if (argc != 3) throw std::runtime_error("target-to-compact args");
             std::cout << "0x" << std::hex << std::nouppercase << TargetToCompact(ParseHex(argv[2])) << "\n";
+            return 0;
+        }
+
+        if (mode == "checkpow") {
+            if (argc != 5) throw std::runtime_error("checkpow args");
+            std::cout << (CheckPow(ParseHex(argv[2]), ParseU32(argv[3]), ParseHex(argv[4])) ? "1" : "0") << "\n";
             return 0;
         }
 

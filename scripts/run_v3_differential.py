@@ -6,7 +6,7 @@ import random
 import subprocess
 
 from wam_security.consensus.compact import compact_to_target, target_to_compact
-from wam_security.consensus.dgw import DgwBlock, DgwParams, dark_gravity_wave
+from wam_security.consensus.dgw import DgwBlock, DgwParams, check_pow_hash, dark_gravity_wave
 from wam_security.consensus.randomx import MAINNET, REGTEST, TESTNET, seed_height
 
 
@@ -39,6 +39,34 @@ def check_compact(harness: str, rng: random.Random, cases: int) -> int:
         native_target = int(call(harness, "compact-to-target", hex(py_bits)), 16)
         if native_target != py_target:
             raise AssertionError(f"compact->target mismatch bits={py_bits:x}")
+        done += 1
+    return done
+
+
+def check_pow(harness: str, rng: random.Random, cases: int) -> int:
+    done = 0
+    bits_values = [0x1E0FFFF0, 0x1E0FFFFF, 0x1D00FFFF]
+    for _ in range(cases):
+        target = rng.randrange(1, POW_LIMIT + 1)
+        bits_values.append(target_to_compact(target))
+
+    for bits in bits_values:
+        target = compact_to_target(bits)[0]
+        for hash_value in {0, max(0, target - 1), target, target + 1}:
+            py_ok = check_pow_hash(hash_value, bits, POW_LIMIT)
+            native_ok = call(harness, "checkpow", hex(hash_value), hex(bits), hex(POW_LIMIT)) == "1"
+            if native_ok != py_ok:
+                raise AssertionError(
+                    f"checkpow mismatch bits={hex(bits)} hash={hash_value:x}: py={py_ok} native={native_ok}"
+                )
+            done += 1
+
+    invalid_bits = [0, 0x1D80FFFF, 0x2300FFFF, target_to_compact(POW_LIMIT << 8)]
+    for bits in invalid_bits:
+        py_ok = check_pow_hash(0, bits, POW_LIMIT)
+        native_ok = call(harness, "checkpow", "0x0", hex(bits), hex(POW_LIMIT)) == "1"
+        if native_ok != py_ok or native_ok:
+            raise AssertionError(f"invalid compact target accepted: {hex(bits)}")
         done += 1
     return done
 
@@ -119,18 +147,21 @@ def main() -> int:
     p.add_argument("--harness", required=True)
     p.add_argument("--seed", type=lambda x: int(x, 0), default=0x57414D)
     p.add_argument("--compact-cases", type=int, default=300)
+    p.add_argument("--pow-cases", type=int, default=200)
     p.add_argument("--seed-cases", type=int, default=300)
     p.add_argument("--dgw-cases", type=int, default=200)
     args = p.parse_args()
 
     rng = random.Random(args.seed)
     compact = check_compact(args.harness, rng, args.compact_cases)
+    pow_vectors = check_pow(args.harness, rng, args.pow_cases)
     seeds = check_seedheight(args.harness, rng, args.seed_cases)
     dgw = check_dgw(args.harness, rng, args.dgw_cases)
     print(f"compact differential: PASS ({compact} vectors)")
+    print(f"PoW boundary differential: PASS ({pow_vectors} vectors)")
     print(f"RandomX seed-height differential: PASS ({seeds} vectors)")
     print(f"DGW differential: PASS ({dgw} vectors)")
-    print(f"total cross-language vectors: PASS ({compact + seeds + dgw})")
+    print(f"total cross-language vectors: PASS ({compact + pow_vectors + seeds + dgw})")
     return 0
 
 
