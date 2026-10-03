@@ -1,0 +1,168 @@
+name: Security V4 Money Safety
+
+on:
+  push:
+    branches:
+      - "security/v4-*"
+  pull_request:
+    paths:
+      - "src/wam_security/money/**"
+      - "src/wam_security/audit/money.py"
+      - "reference/redis/**"
+      - "scripts/run_v4_*"
+      - "scripts/verify_v4_money_findings.py"
+      - "tests/test_money_*"
+      - ".github/workflows/security-v4.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: security-v4-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
+
+jobs:
+  fault-matrix:
+    name: V4 exactly-once faults seed ${{ matrix.seed }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        seed:
+          - "0x57414D"
+          - "0xC0FFEE"
+          - "0xE1AC71"
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compile Python
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+
+      - name: Full unit and invariant suite
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Exactly-once crash and restart matrix
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v4_money_faults.py             --seed "${{ matrix.seed }}"             --cases 5000
+
+  source-and-redis:
+    name: V4 WAM money audit + Redis atomic ledger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch exact WAM target
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Run WAM's existing payment safety tests
+        run: |
+          set -euo pipefail
+          node wam-coin/pool/test/payment-safety.test.js
+          node wam-coin/pool/test/payment-postponed.test.js
+
+      - name: Audit current WAM money path
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin             --out security-reports             --target "$UPSTREAM_SHA"
+          python scripts/verify_v4_money_findings.py
+
+      - name: Start isolated Redis
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq redis-server
+          redis-server --port 6397 --save "" --appendonly no --daemonize yes
+          for i in {1..20}; do
+            if [ "$(redis-cli -p 6397 ping 2>/dev/null || true)" = "PONG" ]; then
+              exit 0
+            fi
+            sleep 0.2
+          done
+          echo "Redis did not start" >&2
+          exit 1
+
+      - name: Prove atomic accounting commit in real Redis
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v4_redis_atomicity.py --port 6397
+
+      - name: Publish audit summary
+        if: always()
+        run: |
+          if [ -f security-reports/security-report.md ]; then
+            cat security-reports/security-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  patched-node-money:
+    name: V4 patched wamd raw-transaction identity probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install WAM build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq             build-essential libtool autotools-dev automake pkg-config             bsdmainutils cmake curl git python3             libevent-dev libboost-dev libsqlite3-dev
+
+      - name: Fetch exact WAM security target
+        run: |
+          set -euo pipefail
+          git clone https://github.com/wamcoin-core-dev/wam-coin.git wam-src
+          git -C wam-src checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C wam-src rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Fetch pinned Bitcoin Core + RandomX and patch
+        working-directory: wam-src
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Configure patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          ./autogen.sh >/dev/null
+          ./configure             --without-gui             --disable-zmq             --disable-tests-fuzz-binary             --with-incompatible-bdb             CPPFLAGS="-I$GITHUB_WORKSPACE/wam-src/build/randomx/src"             LIBS="$GITHUB_WORKSPACE/wam-src/build/randomx/build/librandomx.a -lpthread"             >/dev/null
+
+      - name: Build patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          make -j2
+
+      - name: Preserve consensus baseline
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          ./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests,wam_vesting_tests
+
+      - name: Prove raw-transaction identity survives ambiguous broadcast
+        run: |
+          set -euo pipefail
+          bash scripts/run_v4_wamd_money_probe.sh "$GITHUB_WORKSPACE/wam-src/build/wam-core"
