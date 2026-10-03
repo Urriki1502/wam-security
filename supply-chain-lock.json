@@ -1,0 +1,45 @@
+{
+  "schema": "wam-security-supply-chain-lock/v1",
+  "reviewed_utc": "2026-10-03",
+  "target_wam": {
+    "repository": "https://github.com/wamcoin-core-dev/wam-coin",
+    "commit": "012f3d38570de232a750458e9cf6c91e985db6a1"
+  },
+  "identities": [
+    {
+      "name": "bitcoin-core",
+      "kind": "source-dependency",
+      "repository": "https://github.com/bitcoin/bitcoin.git",
+      "ref": "refs/tags/v28.1",
+      "commit": "32efe850438ef22e2de39e562af557872a402c31"
+    },
+    {
+      "name": "randomx",
+      "kind": "source-dependency",
+      "repository": "https://github.com/tevador/RandomX.git",
+      "ref": "refs/tags/v1.2.1",
+      "commit": "102f8acf90a7649ada410de5499a7ec62e49e1da"
+    },
+    {
+      "name": "actions-checkout-v5",
+      "kind": "ci-action",
+      "repository": "https://github.com/actions/checkout.git",
+      "ref": "refs/tags/v5",
+      "commit": "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"
+    },
+    {
+      "name": "actions-upload-artifact-v7",
+      "kind": "ci-action",
+      "repository": "https://github.com/actions/upload-artifact.git",
+      "ref": "refs/tags/v7",
+      "commit": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+    },
+    {
+      "name": "actions-download-artifact-v7",
+      "kind": "ci-action",
+      "repository": "https://github.com/actions/download-artifact.git",
+      "ref": "refs/tags/v7",
+      "commit": "37930b1c2abaa49bbe596cd826c3c89aef350131"
+    }
+  ]
+}
