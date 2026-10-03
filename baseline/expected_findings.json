@@ -2,6 +2,11 @@
   "schema": "wam-security-baseline/v1",
   "target": "012f3d38570de232a750458e9cf6c91e985db6a1",
   "expected_finding_ids": [
+    "WS-ASSURE-201",
+    "WS-ASSURE-202",
+    "WS-ASSURE-203",
+    "WS-ASSURE-204",
+    "WS-ASSURE-205",
     "WS-MONEY-101",
     "WS-MONEY-102",
     "WS-MONEY-103",
