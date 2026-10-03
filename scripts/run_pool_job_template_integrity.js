@@ -42,6 +42,8 @@ const jobManagerPath = path.join(poolRoot, 'lib', 'jobManager.js');
 const blockTemplatePath = path.join(poolRoot, 'lib', 'blockTemplate.js');
 const constantsPath = path.join(poolRoot, 'lib', 'constants.js');
 const utilPath = path.join(poolRoot, 'lib', 'util.js');
+const stratumServerPath = path.join(poolRoot, 'lib', 'stratumServer.js');
+const serverPath = path.join(poolRoot, 'server.js');
 
 function gitHead(root) {
     const r = spawnSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
@@ -54,7 +56,7 @@ if (wamHead !== expectedCommit) {
     throw new Error('WAM checkout is ' + wamHead + ', expected ' + expectedCommit);
 }
 
-for (const p of [jobManagerPath, blockTemplatePath, constantsPath, utilPath]) {
+for (const p of [jobManagerPath, blockTemplatePath, constantsPath, utilPath, stratumServerPath, serverPath]) {
     if (!fs.existsSync(p)) throw new Error('missing upstream source: ' + p);
 }
 
@@ -181,6 +183,8 @@ function baseSubmission(job, overrides = {}) {
 function sourceContract() {
     const job = fs.readFileSync(jobManagerPath, 'utf8');
     const block = fs.readFileSync(blockTemplatePath, 'utf8');
+    const stratum = fs.readFileSync(stratumServerPath, 'utf8');
+    const server = fs.readFileSync(serverPath, 'utf8');
 
     const processStart = job.indexOf('async processShare(submission)');
     const processEnd = job.indexOf('async _submitBlock(', processStart);
@@ -222,6 +226,15 @@ function sourceContract() {
         submit_retry_distinguishes_no_answer_from_rejection:
             job.includes('result.results.every((r) => !r.ok)') &&
             job.includes('if (!noDaemonAnswered) break'),
+        stratum_seed_notice_precedes_job_notice:
+            stratum.includes("this.notify('mining.set_seedhash'") &&
+            stratum.indexOf("this.notify('mining.set_seedhash'") < stratum.indexOf("this.notify('mining.notify'"),
+        new_tip_is_broadcast_as_clean_job:
+            stratum.includes("jobManager.on('newJob', (job, isNewBlock) => this.broadcastJob(job, isNewBlock))") &&
+            stratum.includes('client.sendJob(job, isNewBlock)'),
+        share_event_flows_to_accounting:
+            server.includes("jobManager.on('share', (share) =>") &&
+            server.includes('shareProcessor.recordShare(share)'),
         no_post_hash_stale_job_recheck:
             hashPos >= 0 && creditPos > hashPos &&
             !afterHash.includes('validJobs.get(') &&
