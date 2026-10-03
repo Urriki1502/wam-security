@@ -90,17 +90,15 @@ def main() -> int:
     datadir = Path(tempfile.mkdtemp(prefix="wam-wallet-integrity-"))
     backup_dir = Path(tempfile.mkdtemp(prefix="wam-wallet-backup-"))
     rpc_port = pick_free_port()
-    rpc_user = "walletci"
-    rpc_pass = secrets.token_urlsafe(24)
     wallet_passphrase = secrets.token_urlsafe(32)
+    current_rpc_cookie: str | None = None
+    rpc_cookie_secrets: set[str] = set()
 
     cli_base = [
         str(cli),
         "-regtest",
         f"-datadir={datadir}",
         f"-rpcport={rpc_port}",
-        f"-rpcuser={rpc_user}",
-        f"-rpcpassword={rpc_pass}",
     ]
     daemon_base = [
         str(wamd),
@@ -115,8 +113,6 @@ def main() -> int:
         "-persistmempool=0",
         "-txindex=1",
         f"-rpcport={rpc_port}",
-        f"-rpcuser={rpc_user}",
-        f"-rpcpassword={rpc_pass}",
         "-daemonwait",
     ]
 
@@ -163,11 +159,28 @@ def main() -> int:
     def jcall(*argv: str, wallet: str | None = None, check: bool = True, timeout: int = 240) -> Any:
         return parse_json(cli_call(*argv, wallet=wallet, check=check, timeout=timeout))
 
+    def secret_cli_call(*argv: str, wallet: str | None = None, timeout: int = 240) -> subprocess.CompletedProcess[str]:
+        """Run an RPC carrying secret material without ever surfacing argv on failure."""
+        cp = cli_call(*argv, wallet=wallet, check=False, timeout=timeout)
+        if cp.returncode != 0:
+            method = argv[0] if argv else "rpc"
+            raise RuntimeError(f"secret-bearing RPC {method!r} failed with code {cp.returncode}")
+        return cp
+
     def start() -> None:
+        nonlocal current_rpc_cookie
         cp = run(daemon_base, check=False, timeout=600)
         if cp.returncode != 0:
             raise RuntimeError(f"wamd startup failed ({cp.returncode}): {cp.stdout[-4000:]}")
         cli_call("-rpcwait", "getblockchaininfo", timeout=300)
+        cookie_path = datadir / "regtest" / ".cookie"
+        if not cookie_path.is_file():
+            raise RuntimeError("RPC cookie file missing after local daemon startup")
+        cookie = cookie_path.read_text(encoding="utf-8").strip()
+        if ":" not in cookie:
+            raise RuntimeError("malformed local RPC cookie")
+        current_rpc_cookie = cookie
+        rpc_cookie_secrets.add(cookie)
 
     def load_wallets(*names: str) -> None:
         loaded = set(jcall("listwallets"))
@@ -314,7 +327,9 @@ def main() -> int:
             },
             separators=(",", ":"),
         ).encode()
-        auth = base64.b64encode(f"{rpc_user}:{rpc_pass}".encode()).decode()
+        if current_rpc_cookie is None:
+            raise RuntimeError("local RPC cookie is unavailable")
+        auth = base64.b64encode(current_rpc_cookie.encode()).decode()
         req = (
             f"POST /wallet/alice HTTP/1.1\r\n"
             f"Host: 127.0.0.1:{rpc_port}\r\n"
@@ -592,14 +607,14 @@ def main() -> int:
             wallet="alice",
         )["psbt"]
 
-        cli_call("encryptwallet", wallet_passphrase, wallet="alice")
+        secret_cli_call("encryptwallet", wallet_passphrase, wallet="alice")
         locked_sign = cli_call("walletprocesspsbt", psbt, "true", wallet="alice", check=False)
         if locked_sign.returncode == 0:
             locked_result = json.loads(locked_sign.stdout)
             if locked_result.get("complete"):
                 raise AssertionError("locked encrypted wallet unexpectedly completed signing")
 
-        cli_call("walletpassphrase", wallet_passphrase, "60", wallet="alice")
+        secret_cli_call("walletpassphrase", wallet_passphrase, "60", wallet="alice")
         unlocked_sign = jcall("walletprocesspsbt", psbt, "true", wallet="alice")
         if not unlocked_sign.get("complete"):
             raise AssertionError("unlocked encrypted wallet failed to complete local signing")
@@ -635,8 +650,8 @@ def main() -> int:
 
         debug_log = datadir / "regtest" / "debug.log"
         log_text = debug_log.read_text(encoding="utf-8", errors="replace") if debug_log.exists() else ""
-        if rpc_pass in log_text:
-            raise AssertionError("generated RPC password leaked into debug.log")
+        if any(secret and secret in log_text for secret in rpc_cookie_secrets):
+            raise AssertionError("generated RPC cookie leaked into debug.log")
         if wallet_passphrase in log_text:
             raise AssertionError("generated wallet passphrase leaked into debug.log")
 
@@ -672,7 +687,7 @@ def main() -> int:
         evidence["classification"] = "WALLET_TRANSACTION_STATE_INVARIANTS_PASS_ON_ISOLATED_REGTEST"
 
         serial = json.dumps(evidence, sort_keys=True)
-        if rpc_pass in serial or wallet_passphrase in serial:
+        if wallet_passphrase in serial or any(secret and secret in serial for secret in rpc_cookie_secrets):
             raise AssertionError("secret material present in evidence")
 
     except Exception as exc:
