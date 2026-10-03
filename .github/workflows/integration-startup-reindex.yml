@@ -121,7 +121,7 @@ jobs:
 
       - name: Upload native regression evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d3992d24b796d5a048ff273f7fcc4a7b6c09
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: startup-reindex-native-evidence
           path: security-reports/startup-reindex-native.json
