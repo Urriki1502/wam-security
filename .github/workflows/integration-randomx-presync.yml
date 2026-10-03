@@ -1,0 +1,49 @@
+name: Integration Security - RandomX Presync
+
+on:
+  push:
+    paths:
+      - "src/wam_security/consensus/presync.py"
+      - "tests/test_randomx_presync.py"
+      - "scripts/run_integration_randomx_presync.py"
+      - ".github/workflows/integration-randomx-presync.yml"
+  pull_request:
+    paths:
+      - "src/wam_security/consensus/presync.py"
+      - "tests/test_randomx_presync.py"
+      - "scripts/run_integration_randomx_presync.py"
+      - ".github/workflows/integration-randomx-presync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  randomx-presync-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Checkout reviewed WAM source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+          path: wam-coin
+
+      - name: Validate RandomX header presync invariants
+        run: |
+          PYTHONPATH=src python3 scripts/run_integration_randomx_presync.py wam-coin \
+            --expected-commit bd71b0bd645286a3867dad6b2bfefd911ec8a5b6 \
+            --cases 5000
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: integration-randomx-presync-evidence
+          path: security-reports/integration-randomx-presync.json
+          if-no-files-found: error
