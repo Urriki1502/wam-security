@@ -1,0 +1,56 @@
+[
+  {
+    "id": "RT-POOL-DUPLICATE-MATURATION",
+    "class": "accepted-public-regression",
+    "check": "upstream-file",
+    "path": "pool/test/maturation-claim.test.js",
+    "description": "Publicly documented accepted pool accounting root cause retains a regression test."
+  },
+  {
+    "id": "RT-API-ADDRESS-REDACTION",
+    "class": "accepted-public-regression",
+    "check": "upstream-file",
+    "path": "pool/test/api-redaction.test.js",
+    "description": "Publicly documented API payout-address exposure retains a response-boundary regression test."
+  },
+  {
+    "id": "RT-PAYOUT-COMMIT-UNKNOWN",
+    "class": "formal-mutant",
+    "check": "formal-mutant",
+    "mutant": "payout-commit-unknown",
+    "expected_invariant": "CommitOnlyAfterSeen"
+  },
+  {
+    "id": "RT-PAYOUT-SECOND-IDENTITY",
+    "class": "formal-mutant",
+    "check": "formal-mutant",
+    "mutant": "payout-second-identity",
+    "expected_invariant": "AtMostOneIdentity"
+  },
+  {
+    "id": "RT-RELEASE-ONE-REVIEW",
+    "class": "formal-mutant",
+    "check": "formal-mutant",
+    "mutant": "release-one-review",
+    "expected_invariant": "PublishRequiresTwoReviews"
+  },
+  {
+    "id": "RT-RELEASE-NO-PROVENANCE",
+    "class": "formal-mutant",
+    "check": "formal-mutant",
+    "mutant": "release-no-provenance",
+    "expected_invariant": "ApprovalRequiresEvidence"
+  },
+  {
+    "id": "RT-PAYOUT-AMBIGUOUS-RPC",
+    "class": "audit-regression",
+    "check": "audit-finding",
+    "finding_id": "WS-MONEY-103"
+  },
+  {
+    "id": "RT-MUTABLE-RELEASE-ACTION",
+    "class": "audit-regression",
+    "check": "audit-finding",
+    "finding_id": "WS-SC-102"
+  }
+]

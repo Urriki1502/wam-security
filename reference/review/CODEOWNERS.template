@@ -1,0 +1,8 @@
+# Reference only — replace placeholder teams with real GitHub owners before deployment.
+scripts/patch_upstream.py @wam-core-maintainers @wam-security-reviewers
+/src/wam/ @wam-core-maintainers @wam-security-reviewers
+/pool/lib/shareProcessor.js @wam-pool-maintainers @wam-security-reviewers
+/pool/lib/daemon.js @wam-pool-maintainers @wam-security-reviewers
+/.github/workflows/ @wam-release-maintainers @wam-security-reviewers
+/scripts/fetch-upstream.sh @wam-release-maintainers @wam-security-reviewers
+/scripts/package_release.sh @wam-release-maintainers @wam-security-reviewers
