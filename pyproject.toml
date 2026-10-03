@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wam-security"
+version = "0.1.0"
+description = "Independent security assurance framework for WAM Coin"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "WAM Security contributors"}]
+dependencies = []
+
+[project.scripts]
+wam-security = "wam_security.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
