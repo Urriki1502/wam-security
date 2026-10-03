@@ -2,6 +2,12 @@
   "schema": "wam-security-baseline/v1",
   "target": "012f3d38570de232a750458e9cf6c91e985db6a1",
   "expected_finding_ids": [
+    "WS-MONEY-101",
+    "WS-MONEY-102",
+    "WS-MONEY-103",
+    "WS-MONEY-104",
+    "WS-MONEY-105",
+    "WS-MONEY-106",
     "WS-P2P-001",
     "WS-POOL-001",
     "WS-POOL-002",

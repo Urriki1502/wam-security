@@ -1,3 +1,3 @@
 """Independent security assurance tooling for WAM Coin."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
