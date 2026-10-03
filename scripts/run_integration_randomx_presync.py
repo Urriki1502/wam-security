@@ -105,7 +105,11 @@ def patched_tree_contract(core: Path) -> tuple[dict[str, bool], list[str]]:
     process_new = window(validation, "bool ChainstateManager::ProcessNewBlockHeaders", 6000)
     contextual = window(validation, "static bool ContextualCheckBlockHeader", 18000)
     has_valid_pow = window(validation, "bool HasValidProofOfWork", 4000)
-    claimed = window(validation, "arith_uint256 CalculateClaimedHeadersWork", 3500)
+    claimed_start = validation.find("arith_uint256 CalculateClaimedHeadersWork")
+    claimed_end = validation.find("return total_work;", claimed_start)
+    if claimed_start < 0 or claimed_end < 0:
+        raise AssertionError("missing CalculateClaimedHeadersWork body")
+    claimed = validation[claimed_start : claimed_end + len("return total_work;")]
     process_headers = window(net, "void PeerManagerImpl::ProcessHeadersMessage", 18000)
     presync_one = window(headerssync, "bool HeadersSyncState::ValidateAndProcessSingleHeader", 6500)
     permitted = window(pow_cpp, "bool PermittedDifficultyTransition", 5000)
