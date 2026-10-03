@@ -16,6 +16,7 @@ import subprocess
 
 WAM_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
 UPSTREAM_TAG = "v28.1"
+UPSTREAM_COMMIT = "32efe850438ef22e2de39e562af557872a402c31"
 
 
 def read(root: Path, rel: str) -> str:
@@ -61,6 +62,7 @@ def main() -> int:
     core = args.patched_tree.resolve()
 
     wam_head = git_head(wam)
+    core_head = git_head(core)
     if wam_head != args.expected_commit:
         raise SystemExit(f"WAM checkout is {wam_head!r}, expected {args.expected_commit}")
 
@@ -95,7 +97,8 @@ def main() -> int:
     checks = {
         "locked_wam_commit_matches": wam_head == args.expected_commit,
         "pinned_upstream_is_bitcoin_core_v28_1":
-            'UPSTREAM_TAG="${UPSTREAM_TAG:-v28.1}"' in fetch_upstream,
+            'UPSTREAM_TAG="${UPSTREAM_TAG:-v28.1}"' in fetch_upstream
+            and core_head == UPSTREAM_COMMIT,
         "wallet_is_upstream_core_with_wam_overlay":
             "WAM-023" in patcher
             and "src/wallet/walletutil.cpp" in patcher
@@ -206,6 +209,7 @@ def main() -> int:
             "repository": "wamcoin-core-dev/wam-coin",
             "wam_commit": wam_head,
             "upstream": f"bitcoin/bitcoin {UPSTREAM_TAG}",
+            "upstream_commit": core_head,
             "wam_security_head": os.environ.get("SECURITY_TARGET_SHA") or git_head(repo),
         },
         "scope": {

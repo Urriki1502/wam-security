@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 from decimal import Decimal
 import json
 import os
@@ -45,6 +46,14 @@ def dec(value: Any) -> Decimal:
     return Decimal(str(value))
 
 
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def pick_free_port() -> int:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", 0))
@@ -76,6 +85,7 @@ def main() -> int:
     wam_commit = run(["git", "-C", str(wam_source), "rev-parse", "HEAD"]).stdout.strip()
     if wam_commit != args.expected_commit:
         raise SystemExit(f"WAM checkout is {wam_commit}, expected {args.expected_commit}")
+    core_upstream_commit = run(["git", "-C", str(core), "rev-parse", "HEAD"]).stdout.strip()
 
     datadir = Path(tempfile.mkdtemp(prefix="wam-wallet-integrity-"))
     backup_dir = Path(tempfile.mkdtemp(prefix="wam-wallet-backup-"))
@@ -115,6 +125,12 @@ def main() -> int:
         "target": {
             "repository": "wamcoin-core-dev/wam-coin",
             "wam_commit": wam_commit,
+            "upstream_tag": "bitcoin/bitcoin v28.1",
+            "upstream_commit": core_upstream_commit,
+            "binaries": {
+                "wamd_sha256": file_sha256(wamd),
+                "wam_cli_sha256": file_sha256(cli),
+            },
             "wam_security_head": os.environ.get("SECURITY_TARGET_SHA"),
         },
         "scope": {
@@ -152,6 +168,13 @@ def main() -> int:
         if cp.returncode != 0:
             raise RuntimeError(f"wamd startup failed ({cp.returncode}): {cp.stdout[-4000:]}")
         cli_call("-rpcwait", "getblockchaininfo", timeout=300)
+
+    def load_wallets(*names: str) -> None:
+        loaded = set(jcall("listwallets"))
+        for name in names:
+            if name not in loaded:
+                cli_call("loadwallet", name)
+                loaded.add(name)
 
     def stop() -> None:
         cli_call("stop", check=False, timeout=60)
@@ -388,6 +411,7 @@ def main() -> int:
         }
         stop()
         start()
+        load_wallets("alice", "bob")
         post_restart = {
             "alice": wallet_state("alice"),
             "bob": wallet_state("bob"),
@@ -430,6 +454,7 @@ def main() -> int:
 
         stop()
         start()
+        load_wallets("alice", "bob")
         lost_after_restart = jcall("gettransaction", lost_txid, wallet="alice")
         wait_mempool_contains(lost_txid, True)
         if tx_record_count("alice", lost_txid) != 1:
@@ -488,6 +513,7 @@ def main() -> int:
 
         stop()
         start()
+        load_wallets("alice", "bob")
         rejection_restart = wallet_state("alice")
         if reject_outpoint not in {f"{u['txid']}:{u['vout']}" for u in rejection_restart["unspent"]}:
             raise AssertionError("rejected transaction input did not survive restart as spendable")
