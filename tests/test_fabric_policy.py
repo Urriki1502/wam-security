@@ -77,6 +77,14 @@ class FabricPolicyTests(unittest.TestCase):
         )
         self.assertEqual(c.state, "WARN")
 
+    def test_unclassifiable_source_drift_fails_closed(self):
+        c = source_drift_check(
+            current_head="2" * 40,
+            audited_head="1" * 40,
+            changed_paths=["<diff-unavailable>"],
+        )
+        self.assertEqual((c.state, c.critical), ("FAIL", True))
+
     def test_supply_cap_violation_is_red_class(self):
         c = supply_check({
             "supply": {
