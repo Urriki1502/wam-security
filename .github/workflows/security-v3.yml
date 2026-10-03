@@ -18,6 +18,10 @@ on:
       - ".github/workflows/security-v3.yml"
   workflow_dispatch:
 
+concurrency:
+  group: security-v3-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -180,10 +184,10 @@ jobs:
           "${CLI[@]}" generatetoaddress 1 "$ADDR" >/dev/null
           INFO67=$("${CLI[@]}" getrandomxinfo)
           H64=$("${CLI[@]}" getblockhash 64)
-          python3 - "$H64" <<'PY' <<<"$INFO67"
-          import json, sys
-          expected = sys.argv[1]
-          d = json.load(sys.stdin)
+          INFO67="$INFO67" H64="$H64" python3 - <<'PY'
+          import json, os
+          expected = os.environ["H64"]
+          d = json.loads(os.environ["INFO67"])
           assert d["seed_height"] == 64, d
           assert d["seed_hash"] == expected, (d["seed_hash"], expected)
           assert d["bootstrap"] is False
