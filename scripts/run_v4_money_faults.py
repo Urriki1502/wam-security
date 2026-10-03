@@ -58,6 +58,8 @@ def run_case(rng: random.Random, case_id: int) -> int:
         ledger.broadcast(chain, outcome)
         if rng.random() < 0.5:
             ledger = restart(ledger)
+        if ledger.reconcile(chain):
+            break
     else:
         raise AssertionError("fault case did not converge")
 
