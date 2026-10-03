@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+from hashlib import sha256
 from pathlib import Path
 import subprocess
 
@@ -146,16 +147,17 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     status_path = args.out / "security-status.json"
     status_path.write_text(json.dumps(status, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    digest = status["status_sha256"]
+    artifact_digest = sha256(status_path.read_bytes()).hexdigest()
     (args.out / "security-status.sha256").write_text(
-        f"{digest}  security-status.json\n",
+        f"{artifact_digest}  security-status.json\n",
         encoding="utf-8",
     )
 
     print(json.dumps({
         "overall": status["overall"],
         "release_blocked": status["release_blocked"],
-        "status_sha256": digest,
+        "body_sha256": status["body_sha256"],
+        "artifact_sha256": artifact_digest,
         "checks": {
             c["check_id"]: c["state"] for c in status["checks"]
         },
