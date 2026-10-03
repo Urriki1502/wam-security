@@ -1,0 +1,128 @@
+name: Integration Security - Startup Reindex
+
+on:
+  push:
+    paths:
+      - "scripts/run_startup_reindex_static.py"
+      - "scripts/probe_startup_reindex_regtest.py"
+      - ".github/workflows/integration-startup-reindex.yml"
+  pull_request:
+    paths:
+      - "scripts/run_startup_reindex_static.py"
+      - "scripts/probe_startup_reindex_regtest.py"
+      - ".github/workflows/integration-startup-reindex.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  WAM_TARGET_SHA: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+  SECURITY_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  startup-reindex-static:
+    name: Static startup/reindex trust-boundary map
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Checkout exact reviewed WAM source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: ${{ env.WAM_TARGET_SHA }}
+          path: wam-src
+
+      - name: Materialize exact patched WAM tree
+        working-directory: wam-src
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Validate startup/reindex source contracts
+        run: |
+          set -euo pipefail
+          python3 scripts/run_startup_reindex_static.py wam-src \
+            --patched-tree wam-src/build/wam-core \
+            --expected-commit "$WAM_TARGET_SHA"
+
+      - name: Upload static evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: startup-reindex-static-evidence
+          path: security-reports/startup-reindex-static.json
+          if-no-files-found: error
+
+  startup-reindex-native:
+    name: Patched wamd isolated restart/reindex regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Install WAM build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils cmake curl git python3 \
+            libevent-dev libboost-dev libsqlite3-dev
+
+      - name: Checkout exact reviewed WAM source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: ${{ env.WAM_TARGET_SHA }}
+          path: wam-src
+
+      - name: Fetch pinned Bitcoin Core + RandomX and patch
+        working-directory: wam-src
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Configure patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          ./autogen.sh >/dev/null
+          ./configure \
+            --without-gui \
+            --disable-zmq \
+            --disable-tests-fuzz-binary \
+            --with-incompatible-bdb \
+            CPPFLAGS="-I$GITHUB_WORKSPACE/wam-src/build/randomx/src" \
+            LIBS="$GITHUB_WORKSPACE/wam-src/build/randomx/build/librandomx.a -lpthread" \
+            >/dev/null
+
+      - name: Build patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          make -j2
+
+      - name: Run isolated restart/reindex regression
+        run: |
+          set -euo pipefail
+          python3 scripts/probe_startup_reindex_regtest.py \
+            --core-tree wam-src/build/wam-core \
+            --wam-source wam-src \
+            --out security-reports/startup-reindex-native.json
+
+      - name: Upload native regression evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          name: startup-reindex-native-evidence
+          path: security-reports/startup-reindex-native.json
+          if-no-files-found: error
