@@ -8,9 +8,13 @@ on:
       - "src/wam_security/audit/source.py"
       - "tests/test_presync_model.py"
       - "tests/test_randomx_consensus.py"
+      - "tests/test_dgw.py"
+      - "tests/test_pow_boundary.py"
       - "tests/test_source_audit.py"
       - "scripts/run_integration_randomx_presync.py"
+      - "native/randomx_header_probe.cpp"
       - ".github/workflows/integration-randomx-presync.yml"
+      - ".github/workflows/security-v3.yml"
   pull_request:
     paths:
       - "src/wam_security/model/presync.py"
@@ -18,9 +22,13 @@ on:
       - "src/wam_security/audit/source.py"
       - "tests/test_presync_model.py"
       - "tests/test_randomx_consensus.py"
+      - "tests/test_dgw.py"
+      - "tests/test_pow_boundary.py"
       - "tests/test_source_audit.py"
       - "scripts/run_integration_randomx_presync.py"
+      - "native/randomx_header_probe.cpp"
       - ".github/workflows/integration-randomx-presync.yml"
+      - ".github/workflows/security-v3.yml"
   workflow_dispatch:
 
 permissions:
@@ -29,7 +37,9 @@ permissions:
 jobs:
   randomx-presync-validation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
+    env:
+      SECURITY_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - name: Checkout WAM Security
@@ -42,9 +52,16 @@ jobs:
           ref: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
           path: wam-coin
 
-      - name: Validate RandomX header presync invariants
+      - name: Materialize exact patched WAM tree
         run: |
+          set -euo pipefail
+          bash wam-coin/scripts/fetch-upstream.sh
+
+      - name: Validate RandomX header lifecycle invariants
+        run: |
+          set -euo pipefail
           PYTHONPATH=src python3 scripts/run_integration_randomx_presync.py wam-coin \
+            --patched-tree wam-coin/build/wam-core \
             --expected-commit bd71b0bd645286a3867dad6b2bfefd911ec8a5b6 \
             --cases 5000
 
