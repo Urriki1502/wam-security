@@ -15,6 +15,8 @@ The V2 assurance layers are:
 3. **Fault injection** — crash/restart and ambiguous RPC outcomes across a payout state machine.
 4. **Runtime source regression** — verify reviewed WAM Stratum/API/RPC bounds do not silently disappear.
 5. **Deterministic fuzzing** — seeded corpora that are reproducible in CI rather than random failures nobody can replay.
+6. **Fail-closed watchdog** — unknown/failed money dependencies pause money movement while read-only observability remains available.
+7. **Restart budget** — repeated process failures trip a bounded restart circuit instead of creating an infinite crash loop.
 
 ## Exit gates
 
@@ -26,6 +28,8 @@ V2 is operational only when:
 - oversized input is rejected before expensive parsing in the reference guard;
 - resource counters never exceed configured bounds;
 - multiple deterministic fuzz seeds pass in GitHub Actions;
+- any unknown/failed money dependency pauses money movement;
+- restart loops are bounded by policy;
 - the pinned WAM snapshot retains its reviewed Stratum/API/RPC runtime guards;
 - V2 evidence is recorded with exact CI run IDs.
 
