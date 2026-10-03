@@ -1,0 +1,101 @@
+name: Security V5 Supply Chain Fortress
+
+on:
+  push:
+    branches:
+      - "security/v5-*"
+  pull_request:
+    paths:
+      - "src/wam_security/supplychain/**"
+      - "src/wam_security/audit/supply_chain.py"
+      - "supply-chain-lock.json"
+      - "scripts/run_v5_*"
+      - "scripts/verify_v5_*"
+      - "tests/test_supply_chain_audit.py"
+      - "tests/test_provenance.py"
+      - "tests/test_reproducible_archive.py"
+      - ".github/workflows/security-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  WAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
+
+jobs:
+  trust-gates:
+    name: V5 identity + provenance + SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Compile and run full invariant suite
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q src tests scripts
+          PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Fetch exact WAM target
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$WAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$WAM_SHA"
+
+      - name: Audit current WAM release trust surface
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m wam_security.cli audit wam-coin             --out security-reports             --target "$WAM_SHA"
+          python scripts/verify_v5_supply_findings.py
+
+      - name: Verify reviewed remote identities did not move
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/verify_v5_remote_identities.py
+
+      - name: Build reproducible release-control evidence
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/run_v5_release_surface.py wam-coin             --out v5-artifacts
+          python -m json.tool v5-artifacts/summary.json
+
+      - name: Preserve V5 machine-readable evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: v5-supply-chain-evidence
+          path: |
+            v5-artifacts/
+            security-reports/
+
+  current-release-repro:
+    name: V5 current WAM packaging reproducibility
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout wam-security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Fetch exact WAM target
+        run: |
+          set -euo pipefail
+          git clone https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
+          git -C wam-coin checkout --detach "$WAM_SHA"
+          test "$(git -C wam-coin rev-parse HEAD)" = "$WAM_SHA"
+
+      - name: Build using the current WAM release path
+        working-directory: wam-coin
+        run: |
+          set -euo pipefail
+          bash install.sh --build-only --node-only --network testnet --jobs 2
+
+      - name: Package the same build twice and compare
+        run: |
+          set -euo pipefail
+          bash scripts/run_v5_current_packaging_probe.sh "$GITHUB_WORKSPACE/wam-coin"
