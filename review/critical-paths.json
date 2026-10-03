@@ -1,0 +1,41 @@
+{
+  "schema": "wam-security-critical-review/v1",
+  "required_approvals": 2,
+  "paths": [
+    {
+      "path": "scripts/patch_upstream.py",
+      "domain": "consensus-patch",
+      "owners": ["core-maintainer", "security-reviewer"]
+    },
+    {
+      "path": "src/wam/**",
+      "domain": "consensus-and-wallet",
+      "owners": ["core-maintainer", "security-reviewer"]
+    },
+    {
+      "path": "pool/lib/shareProcessor.js",
+      "domain": "money-path",
+      "owners": ["pool-maintainer", "security-reviewer"]
+    },
+    {
+      "path": "pool/lib/daemon.js",
+      "domain": "money-rpc",
+      "owners": ["pool-maintainer", "security-reviewer"]
+    },
+    {
+      "path": ".github/workflows/**",
+      "domain": "release-trust",
+      "owners": ["release-maintainer", "security-reviewer"]
+    },
+    {
+      "path": "scripts/fetch-upstream.sh",
+      "domain": "dependency-origin",
+      "owners": ["release-maintainer", "security-reviewer"]
+    },
+    {
+      "path": "scripts/package_release.sh",
+      "domain": "artifact-production",
+      "owners": ["release-maintainer", "security-reviewer"]
+    }
+  ]
+}
