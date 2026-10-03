@@ -8,8 +8,10 @@ on:
       - "src/wam_security/release_trust.py"
       - "src/wam_security/treasury/**"
       - "src/wam_security/electrum/**"
+      - "reference/upstream_patch/**"
       - "tests/test_release_trust.py"
       - "tests/test_treasury_regression.py"
+      - "tests/test_treasury_spend_hardened.py"
       - "tests/test_electrum_trust.py"
       - "scripts/run_release_trust_regression.py"
       - "scripts/run_treasury_static.py"
@@ -23,8 +25,10 @@ on:
       - "src/wam_security/release_trust.py"
       - "src/wam_security/treasury/**"
       - "src/wam_security/electrum/**"
+      - "reference/upstream_patch/**"
       - "tests/test_release_trust.py"
       - "tests/test_treasury_regression.py"
+      - "tests/test_treasury_spend_hardened.py"
       - "tests/test_electrum_trust.py"
       - "scripts/run_release_trust_regression.py"
       - "scripts/run_treasury_static.py"
@@ -51,14 +55,26 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - name: Compile trust-boundary code
-        run: PYTHONPATH=src python -m compileall -q src/wam_security/treasury src/wam_security/electrum src/wam_security/release_trust.py scripts/run_*trust*.py scripts/run_treasury_static.py
+      - name: Compile trust-boundary code and treasury candidate
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q \
+            src/wam_security/treasury \
+            src/wam_security/electrum \
+            src/wam_security/release_trust.py \
+            scripts/run_*trust*.py \
+            scripts/run_treasury_static.py \
+            reference/upstream_patch/scripts/treasury_spend_hardened.py
       - name: Run local release trust regressions
         run: PYTHONPATH=src python -m unittest discover -s tests -p 'test_release_trust.py' -v
-      - name: Run local treasury regressions
+      - name: Run treasury reference regressions
         run: PYTHONPATH=src python -m unittest discover -s tests -p 'test_treasury_regression.py' -v
+      - name: Run hardened treasury candidate regressions
+        run: PYTHONPATH=src python -m unittest discover -s tests -p 'test_treasury_spend_hardened.py' -v
       - name: Run local Electrum regressions
         run: PYTHONPATH=src python -m unittest discover -s tests -p 'test_electrum_trust.py' -v
+      - name: Run complete security suite
+        run: PYTHONPATH=src python -m unittest discover -s tests -v
 
   locked-upstream-contracts:
     runs-on: ubuntu-24.04
@@ -78,6 +94,13 @@ jobs:
           set -euo pipefail
           PYTHONPATH=src python scripts/run_treasury_static.py wam-src --out security-reports/treasury-static.json
           PYTHONPATH=src python scripts/run_electrum_trust_regression.py wam-src --out security-reports/electrum-trust.json
+      - name: Confirm hardened candidate baseline remains present
+        run: |
+          set -euo pipefail
+          test -f wam-src/scripts/treasury_spend.py
+          test -f reference/upstream_patch/scripts/treasury_spend_hardened.py
+          grep -F "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6" \
+            reference/upstream_patch/scripts/treasury_spend_hardened.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
