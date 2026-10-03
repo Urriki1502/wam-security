@@ -12,9 +12,9 @@ on:
       - "tests/test_pow_boundary.py"
       - "tests/test_source_audit.py"
       - "scripts/run_integration_randomx_presync.py"
+      - "scripts/probe_randomx_regtest.py"
       - "native/randomx_header_probe.cpp"
       - ".github/workflows/integration-randomx-presync.yml"
-      - ".github/workflows/security-v3.yml"
   pull_request:
     paths:
       - "src/wam_security/model/presync.py"
@@ -26,20 +26,23 @@ on:
       - "tests/test_pow_boundary.py"
       - "tests/test_source_audit.py"
       - "scripts/run_integration_randomx_presync.py"
+      - "scripts/probe_randomx_regtest.py"
       - "native/randomx_header_probe.cpp"
       - ".github/workflows/integration-randomx-presync.yml"
-      - ".github/workflows/security-v3.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  WAM_TARGET_SHA: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+  SECURITY_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   randomx-presync-validation:
+    name: Static + synthetic lifecycle validation
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      SECURITY_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - name: Checkout WAM Security
@@ -49,7 +52,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: wamcoin-core-dev/wam-coin
-          ref: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+          ref: ${{ env.WAM_TARGET_SHA }}
           path: wam-coin
 
       - name: Materialize exact patched WAM tree
@@ -62,13 +65,94 @@ jobs:
           set -euo pipefail
           PYTHONPATH=src python3 scripts/run_integration_randomx_presync.py wam-coin \
             --patched-tree wam-coin/build/wam-core \
-            --expected-commit bd71b0bd645286a3867dad6b2bfefd911ec8a5b6 \
+            --expected-commit "$WAM_TARGET_SHA" \
             --cases 5000
 
-      - name: Upload validation evidence
+      - name: Upload lifecycle evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: integration-randomx-presync-evidence
           path: security-reports/integration-randomx-presync.json
+          if-no-files-found: error
+
+  randomx-native-regtest:
+    name: Patched wamd isolated regtest validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Install WAM build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential libtool autotools-dev automake pkg-config \
+            bsdmainutils cmake curl git python3 \
+            libevent-dev libboost-dev libsqlite3-dev
+
+      - name: Checkout exact reviewed WAM source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: ${{ env.WAM_TARGET_SHA }}
+          path: wam-src
+
+      - name: Fetch pinned Bitcoin Core + RandomX and patch
+        working-directory: wam-src
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Configure patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          ./autogen.sh >/dev/null
+          ./configure \
+            --without-gui \
+            --disable-zmq \
+            --disable-tests-fuzz-binary \
+            --with-incompatible-bdb \
+            CPPFLAGS="-I$GITHUB_WORKSPACE/wam-src/build/randomx/src" \
+            LIBS="$GITHUB_WORKSPACE/wam-src/build/randomx/build/librandomx.a -lpthread" \
+            >/dev/null
+
+      - name: Build patched WAM node
+        working-directory: wam-src/build/wam-core
+        run: |
+          set -euo pipefail
+          make -j2
+
+      - name: Build local RandomX header fixture helper
+        run: |
+          set -euo pipefail
+          mkdir -p build-randomx-probe
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -I"$GITHUB_WORKSPACE/wam-src/build/randomx/src" \
+            native/randomx_header_probe.cpp \
+            "$GITHUB_WORKSPACE/wam-src/build/randomx/build/librandomx.a" \
+            -lpthread \
+            -o build-randomx-probe/randomx-header-probe
+
+      - name: Run isolated RandomX acceptance and epoch probe
+        run: |
+          set -euo pipefail
+          python3 scripts/probe_randomx_regtest.py \
+            --core-tree wam-src/build/wam-core \
+            --wam-source wam-src \
+            --helper build-randomx-probe/randomx-header-probe \
+            --out security-reports/randomx-native-regtest.json
+
+      - name: Upload native regtest evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: randomx-native-regtest-evidence
+          path: security-reports/randomx-native-regtest.json
           if-no-files-found: error
