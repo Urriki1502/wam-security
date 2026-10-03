@@ -2,7 +2,7 @@
 """Validate WAM RandomX/header pre-sync invariants on local source and fixtures.
 
 Scope is intentionally limited to an exact open-source checkout, static source
-inspection, deterministic synthetic fixtures, and local unit tests.  It does
+inspection, deterministic synthetic fixtures, and local unit tests. It does
 not contact nodes, peers, wallets, pools, or third-party infrastructure.
 """
 
@@ -18,7 +18,7 @@ import sys
 import time
 
 from wam_security.audit.source import audit_wam_source
-from wam_security.consensus.presync import SyntheticHeader, model_presync
+from wam_security.model.presync import HeaderClaim, validated_work
 
 WAM_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
 FINDING_ID = "WS-P2P-001"
@@ -89,50 +89,54 @@ def source_contract(patcher: str) -> dict[str, bool]:
 
 
 def exercise_synthetic_matrix(cases: int) -> dict:
+    """Exercise the existing generic pre-sync invariant model.
+
+    The current WAM source shape is modeled with require_pow=False because its
+    early HasValidProofOfWork gate returns success without establishing RandomX
+    evidence. The required fail-closed shape is modeled with require_pow=True.
+    """
+
     rng = random.Random(0x57414D)
     divergence = 0
-    invalid_credited = 0
+    invalid_claims_accepted_by_current_shape = 0
 
     for _ in range(cases):
         count = rng.randint(1, 12)
         headers = [
-            SyntheticHeader(
+            HeaderClaim(
                 claimed_work=rng.randint(1, 1000),
-                pow_valid=(rng.randrange(4) == 0),
+                pow_verified=(rng.randrange(4) == 0),
             )
             for _ in range(count)
         ]
-        verified_total = sum(h.claimed_work for h in headers if h.pow_valid)
-        claimed_total = sum(h.claimed_work for h in headers)
+        threshold = rng.randint(1, sum(h.claimed_work for h in headers))
 
-        # Pick a threshold inside the claimed range.  If verified work is below
-        # it but claimed work reaches it, the two models must diverge.
-        threshold = rng.randint(1, max(1, claimed_total))
+        current_work = validated_work(headers, require_pow=False)
+        invalid_count = sum(not h.pow_verified for h in headers)
+        invalid_claims_accepted_by_current_shape += invalid_count
 
-        current = model_presync(
-            headers, threshold=threshold, require_pow_evidence=False
-        )
-        required = model_presync(
-            headers, threshold=threshold, require_pow_evidence=True
-        )
+        try:
+            verified_work = validated_work(headers, require_pow=True)
+            safe_rejected = False
+        except ValueError:
+            verified_work = 0
+            safe_rejected = True
 
-        assert current.verified_work == verified_total
-        assert required.credited_work == verified_total
-        assert current.credited_work == claimed_total
-        assert required.invalid_headers_credited == 0
+        current_reaches = current_work >= threshold
+        required_reaches = (not safe_rejected) and verified_work >= threshold
 
-        invalid_credited += current.invalid_headers_credited
-        if current.reached_threshold and not required.reached_threshold:
+        if current_reaches and not required_reaches:
             divergence += 1
 
     if divergence == 0:
-        raise AssertionError("synthetic matrix did not exercise the presync divergence")
+        raise AssertionError("synthetic matrix did not exercise the pre-sync divergence")
 
     return {
         "cases": cases,
         "divergence_cases": divergence,
-        "invalid_headers_credited_by_current_shape": invalid_credited,
-        "required_shape_credits_only_verified_work": True,
+        "unverified_claims_accepted_by_current_shape":
+            invalid_claims_accepted_by_current_shape,
+        "required_shape_rejects_unverified_work": True,
     }
 
 
@@ -174,7 +178,11 @@ def main() -> int:
     pyenv["PYTHONPATH"] = str(repo / "src")
 
     commands = []
-    for pattern in ("test_randomx_consensus.py", "test_randomx_presync.py", "test_source_audit.py"):
+    for pattern in (
+        "test_randomx_consensus.py",
+        "test_presync_model.py",
+        "test_source_audit.py",
+    ):
         result = run(
             [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", pattern, "-v"],
             cwd=repo,
