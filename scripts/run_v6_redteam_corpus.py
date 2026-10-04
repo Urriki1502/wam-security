@@ -72,6 +72,11 @@ def main() -> int:
             if fid not in finding_ids:
                 raise AssertionError(f"{case['id']}: expected finding missing: {fid}")
             print(f"PASS {case['id']}: {fid}")
+        elif kind == "audit-absence":
+            fid = case["finding_id"]
+            if fid in finding_ids:
+                raise AssertionError(f"{case['id']}: fixed finding regressed: {fid}")
+            print(f"PASS {case['id']}: {fid} remains absent")
         else:
             raise AssertionError(f"{case['id']}: unknown check type {kind}")
         passed += 1
