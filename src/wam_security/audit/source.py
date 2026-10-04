@@ -14,6 +14,38 @@ def _read(root: Path, path: str) -> str:
     return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
+def _strip_js_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"//[^\n]*", "", text)
+
+
+def _method_body(text: str, start_marker: str, end_marker: str) -> str:
+    start = text.find(start_marker)
+    if start < 0:
+        return ""
+    end = text.find(end_marker, start + len(start_marker))
+    return text[start:] if end < 0 else text[start:end]
+
+
+def _money_rpc_failover_is_guarded(daemon: str) -> bool:
+    code = _strip_js_comments(daemon)
+    money_set = re.search(
+        r"DaemonInterface\.MONEY_RPCS\s*=\s*new Set\s*\(\s*\[(?P<body>.*?)\]\s*\)",
+        code,
+        re.S,
+    )
+    if not money_set or "'sendmany'" not in money_set.group("body"):
+        return False
+    return all(
+        re.search(pattern, code, re.S)
+        for pattern in (
+            r"const\s+guarded\s*=\s*DaemonInterface\.MONEY_RPCS\.has\(method\)",
+            r"if\s*\(\s*guarded\s*&&\s*err\.ambiguous\s*\).*?throw\s+err",
+            r"anyAmbiguous\s*=\s*anyAmbiguous\s*\|\|\s*Boolean\(err\.ambiguous\)",
+        )
+    )
+
+
 def audit_wam_source(root: str | Path) -> list[Finding]:
     root = Path(root)
     findings: list[Finding] = []
@@ -22,11 +54,35 @@ def audit_wam_source(root: str | Path) -> list[Finding]:
     daemon = _read(root, "pool/lib/daemon.js")
     patcher = _read(root, "scripts/patch_upstream.py")
 
+    share_code = _strip_js_comments(share)
+    payment = _method_body(
+        share_code,
+        "async _processPayments()",
+        "async pruneHashrateWindow()",
+    )
+
+    has_delete = bool(
+        re.search(
+            r"catch\s*\(err\).*?redis\.del\([^\n]*payment:inflight",
+            payment,
+            re.S,
+        )
+    )
+    guarded_delete = bool(
+        re.search(
+            r"catch\s*\(err\).*?"
+            r"if\s*\(\s*err\.ambiguous\s*!==\s*false\s*\)\s*\{.*?"
+            r"return\s*;.*?\}.*?"
+            r"redis\.del\([^\n]*payment:inflight",
+            payment,
+            re.S,
+        )
+    )
     if (
-        "sendmany" in share
-        and "payment:inflight" in share
-        and re.search(r"catch\s*\(err\).*?payment:inflight", share, re.S)
-        and re.search(r"catch\s*\(err\).*?redis\.del\([^\n]*payment:inflight", share, re.S)
+        "sendmany" in payment
+        and "payment:inflight" in payment
+        and has_delete
+        and not guarded_delete
     ):
         findings.append(Finding(
             finding_id="WS-POOL-001",
@@ -34,18 +90,19 @@ def audit_wam_source(root: str | Path) -> list[Finding]:
             confidence="CONFIRMED-LOGIC-RISK",
             title="Ambiguous sendmany failure can discard payout intent",
             path="pool/lib/shareProcessor.js",
-            evidence="sendmany failure path deletes payment:inflight while balances remain owed",
+            evidence="sendmany failure path can delete payment:inflight without proving non-execution",
             impact=("If wamd accepts or broadcasts a payment but the HTTP response is lost or times out, "
                     "the next run can construct another economic payment for the same debt."),
-            recommendation=("Pre-build and sign one deterministic transaction, persist raw tx plus txid before "
-                            "broadcast, and reconcile ambiguous outcomes by txid before retry or balance mutation."),
+            recommendation=("Keep the durable intent on unknown outcomes and only clear it after a failure "
+                            "that proves the money-moving RPC did not execute."),
         ))
 
     if (
         "async cmd(method" in daemon
         and "for (const d of ordered)" in daemon
-        and "sendmany" in share
-        and "daemon.cmd('sendmany'" in share
+        and "sendmany" in payment
+        and "daemon.cmd('sendmany'" in payment
+        and not _money_rpc_failover_is_guarded(daemon)
     ):
         findings.append(Finding(
             finding_id="WS-POOL-002",
@@ -53,10 +110,10 @@ def audit_wam_source(root: str | Path) -> list[Finding]:
             confidence="CONFIRMED-ARCHITECTURE-RISK",
             title="Generic daemon failover includes non-idempotent sendmany",
             path="pool/lib/daemon.js",
-            evidence="cmd() retries methods across daemons and payout code invokes sendmany through cmd()",
+            evidence="cmd() can retry sendmany across daemons after an outcome-ambiguous failure",
             impact="A timeout after execution on daemon A can cause the same logical payout to execute again on daemon B.",
-            recommendation=("Separate read/idempotent RPC failover from money-moving RPCs. Broadcast one precomputed "
-                            "raw transaction identity and make retries idempotent."),
+            recommendation=("Classify RPC failures at the transport boundary and prevent money-moving RPC "
+                            "failover whenever the first daemon's execution outcome is unknown."),
         ))
 
     if (
