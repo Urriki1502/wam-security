@@ -43,9 +43,10 @@
   },
   {
     "id": "RT-PAYOUT-AMBIGUOUS-RPC",
-    "class": "audit-regression",
-    "check": "audit-finding",
-    "finding_id": "WS-MONEY-103"
+    "class": "fixed-audit-regression",
+    "check": "audit-absence",
+    "finding_id": "WS-MONEY-103",
+    "description": "The maintainer payout patch must keep the ambiguous-RPC intent-deletion finding closed."
   },
   {
     "id": "RT-MUTABLE-RELEASE-ACTION",
