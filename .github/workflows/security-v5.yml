@@ -20,9 +20,6 @@ on:
 permissions:
   contents: read
 
-env:
-  WAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
-
 jobs:
   trust-gates:
     name: V5 identity + provenance + SBOM
@@ -39,6 +36,17 @@ jobs:
           set -euo pipefail
           PYTHONPATH=src python -m compileall -q src tests scripts
           PYTHONPATH=src python -m unittest discover -s tests -v
+
+      - name: Resolve audited WAM target
+        run: |
+          set -euo pipefail
+          WAM_SHA="$(python - <<'PY'
+          import json
+          with open("supply-chain-lock.json", encoding="utf-8") as f:
+              print(json.load(f)["target_wam"]["commit"])
+          PY
+          )"
+          echo "WAM_SHA=$WAM_SHA" >> "$GITHUB_ENV"
 
       - name: Fetch exact WAM target
         run: |
@@ -81,6 +89,17 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+
+      - name: Resolve audited WAM target
+        run: |
+          set -euo pipefail
+          WAM_SHA="$(python - <<'PY'
+          import json
+          with open("supply-chain-lock.json", encoding="utf-8") as f:
+              print(json.load(f)["target_wam"]["commit"])
+          PY
+          )"
+          echo "WAM_SHA=$WAM_SHA" >> "$GITHUB_ENV"
 
       - name: Fetch exact WAM target
         run: |

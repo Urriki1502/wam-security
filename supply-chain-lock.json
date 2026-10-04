@@ -1,9 +1,9 @@
 {
   "schema": "wam-security-supply-chain-lock/v1",
-  "reviewed_utc": "2026-10-03",
+  "reviewed_utc": "2026-10-04",
   "target_wam": {
     "repository": "https://github.com/wamcoin-core-dev/wam-coin",
-    "commit": "012f3d38570de232a750458e9cf6c91e985db6a1"
+    "commit": "d2c92cdbe5c5d16606a7e96bae4359b5f7f89a0f"
   },
   "identities": [
     {
