@@ -49,10 +49,19 @@ jobs:
       - name: Fetch current WAM main with audit history
         run: |
           set -euo pipefail
+          AUDITED_HEAD="$(python - <<'PY'
+          import json
+          with open("supply-chain-lock.json", encoding="utf-8") as f:
+              print(json.load(f)["target_wam"]["commit"])
+          PY
+          )"
           git clone --filter=blob:none https://github.com/wamcoin-core-dev/wam-coin.git wam-coin
           git -C wam-coin checkout --detach origin/main
-          git -C wam-coin fetch origin 012f3d38570de232a750458e9cf6c91e985db6a1
+          if ! git -C wam-coin cat-file -e "${AUDITED_HEAD}^{commit}" 2>/dev/null; then
+            git -C wam-coin fetch origin "$AUDITED_HEAD"
+          fi
           echo "WAM_HEAD=$(git -C wam-coin rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "WAM_AUDITED_HEAD=$AUDITED_HEAD" >> "$GITHUB_ENV"
 
       - name: Audit current WAM source
         run: |
