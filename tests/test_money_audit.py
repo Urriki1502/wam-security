@@ -6,18 +6,25 @@ from wam_security.audit.money import audit_money_safety
 
 
 SHARE = r"""
-this.startupReconcile().catch((e) => this.log.error(e.message));
-const intent = { startedAt: Date.now(), total: batchTotal, payouts: Object.fromEntries(batch) };
-await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));
-try {
-  txid = await this.daemon.cmd('sendmany', ['', sendMany]);
-} catch (err) {
-  await this.redis.del(this.k('payment:inflight'));
+start() {
+  this.startupReconcile().catch((e) => this.log.error(e.message));
 }
-const pipe = this.redis.pipeline();
-pipe.hincrby(this.k('balances'), address, -amount);
-pipe.hincrby(this.k('paid'), address, amount);
-pipe.del(this.k('payment:inflight'));
+stop() {}
+
+async _processPayments() {
+  const intent = { startedAt: Date.now(), total: batchTotal, payouts: Object.fromEntries(batch) };
+  await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));
+  try {
+    txid = await this.daemon.cmd('sendmany', ['', sendMany]);
+  } catch (err) {
+    await this.redis.del(this.k('payment:inflight'));
+  }
+  const pipe = this.redis.pipeline();
+  pipe.hincrby(this.k('balances'), address, -amount);
+  pipe.hincrby(this.k('paid'), address, amount);
+  pipe.del(this.k('payment:inflight'));
+}
+async pruneHashrateWindow() {}
 """
 
 DAEMON = r"""
