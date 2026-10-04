@@ -11,9 +11,6 @@ on:
 permissions:
   contents: read
 
-env:
-  UPSTREAM_SHA: 012f3d38570de232a750458e9cf6c91e985db6a1
-
 jobs:
   baseline:
     name: V1 security baseline
@@ -25,6 +22,22 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
+
+      - name: Resolve audited WAM target
+        run: |
+          set -euo pipefail
+          UPSTREAM_SHA="$(python - <<'PY'
+          import json
+          with open("baseline/expected_findings.json", encoding="utf-8") as f:
+              baseline = json.load(f)["target"]
+          with open("supply-chain-lock.json", encoding="utf-8") as f:
+              locked = json.load(f)["target_wam"]["commit"]
+          if baseline != locked:
+              raise SystemExit(f"baseline/lock target mismatch: {baseline} != {locked}")
+          print(locked)
+          PY
+          )"
+          echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_ENV"
 
       - name: Runtime identity
         run: |
