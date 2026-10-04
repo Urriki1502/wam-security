@@ -1,0 +1,76 @@
+name: Integration Security - Pool Job Integrity
+
+on:
+  push:
+    paths:
+      - "scripts/run_pool_job_template_integrity.js"
+      - "native/pool_job_randomx_probe.cpp"
+      - ".github/workflows/integration-pool-job-integrity.yml"
+  pull_request:
+    paths:
+      - "scripts/run_pool_job_template_integrity.js"
+      - "native/pool_job_randomx_probe.cpp"
+      - ".github/workflows/integration-pool-job-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  WAM_TARGET_SHA: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+  SECURITY_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  pool-job-integrity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Checkout exact reviewed WAM source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: ${{ env.WAM_TARGET_SHA }}
+          path: wam-src
+
+      - name: Run upstream pool regression suite
+        run: |
+          set -euo pipefail
+          node wam-src/pool/test/run-all.js
+
+      - name: Fetch pinned RandomX and patched source tree
+        working-directory: wam-src
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Build local RandomX template probe
+        run: |
+          set -euo pipefail
+          mkdir -p build-pool-job-probe
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror \
+            -I"$GITHUB_WORKSPACE/wam-src/build/randomx/src" \
+            native/pool_job_randomx_probe.cpp \
+            "$GITHUB_WORKSPACE/wam-src/build/randomx/build/librandomx.a" \
+            -lpthread \
+            -o build-pool-job-probe/pool-job-randomx-probe
+
+      - name: Validate job/template lifecycle and local RandomX binding
+        run: |
+          set -euo pipefail
+          node scripts/run_pool_job_template_integrity.js \
+            --wam-root wam-src \
+            --expected-commit "$WAM_TARGET_SHA" \
+            --randomx-probe build-pool-job-probe/pool-job-randomx-probe \
+            --out security-reports/pool-job-template-integrity.json
+
+      - name: Upload integration evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pool-job-template-integrity-evidence
+          path: security-reports/pool-job-template-integrity.json
+          if-no-files-found: error
