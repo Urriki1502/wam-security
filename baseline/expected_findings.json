@@ -1,6 +1,6 @@
 {
   "schema": "wam-security-baseline/v1",
-  "target": "012f3d38570de232a750458e9cf6c91e985db6a1",
+  "target": "d2c92cdbe5c5d16606a7e96bae4359b5f7f89a0f",
   "expected_finding_ids": [
     "WS-ASSURE-201",
     "WS-ASSURE-202",
@@ -14,13 +14,7 @@
     "WS-FABRIC-305",
     "WS-MONEY-101",
     "WS-MONEY-102",
-    "WS-MONEY-103",
-    "WS-MONEY-104",
-    "WS-MONEY-105",
-    "WS-MONEY-106",
     "WS-P2P-001",
-    "WS-POOL-001",
-    "WS-POOL-002",
     "WS-SC-001",
     "WS-SC-002",
     "WS-SC-101",
