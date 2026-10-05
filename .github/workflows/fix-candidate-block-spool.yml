@@ -1,0 +1,57 @@
+name: Fix Candidate - Block Spool Recovery
+
+on:
+  push:
+    branches:
+      - "fix-candidate/block-spool-state-bb6d521"
+    paths:
+      - "src/wam_security/block_spool/**"
+      - "tests/test_block_spool_state_model.py"
+      - "scripts/verify_block_spool_candidate_target.py"
+      - "docs/BLOCK_SPOOL_RECOVERY_CANDIDATE.md"
+      - ".github/workflows/fix-candidate-block-spool.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  model-and-source-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact reviewed WAM revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: bb6d5214f2f5de3b7464587cc1b2949d221dcd18
+          path: wam-coin
+          persist-credentials: false
+
+      - name: Compile candidate model
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m compileall -q             src/wam_security/block_spool             scripts/verify_block_spool_candidate_target.py             tests/test_block_spool_state_model.py
+
+      - name: Run block-spool crash-boundary model
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python -m unittest tests.test_block_spool_state_model -v
+
+      - name: Bind model assumptions to current WAM source
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python scripts/verify_block_spool_candidate_target.py             wam-coin             --out security-reports/block-spool-candidate-source.json
+
+      - name: Upload source-binding evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: block-spool-fix-candidate-evidence
+          path: security-reports/block-spool-candidate-source.json
+          if-no-files-found: error
