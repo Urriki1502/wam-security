@@ -15,7 +15,7 @@ import sys
 import time
 from typing import Iterable
 
-PATCH_COMMIT = "bb6d5214f2f5de3b7464587cc1b2949d221dcd18"
+PATCH_COMMIT = "260bc468e5adffea7ce68d8f97fac3e27e4c50b2"
 
 
 def run(cmd: list[str], *, cwd: Path, timeout: int = 180, env: dict[str, str] | None = None) -> dict:
@@ -79,6 +79,7 @@ def main() -> int:
     wam = args.wam_root.resolve()
     daemon = wam / "pool/lib/daemon.js"
     share = wam / "pool/lib/shareProcessor.js"
+    job_manager = wam / "pool/lib/jobManager.js"
     daemon_test = wam / "pool/test/daemon-money-failover.test.js"
     payment_test = wam / "pool/test/payment-safety.test.js"
     payment_postponed_test = wam / "pool/test/payment-postponed.test.js"
@@ -87,11 +88,12 @@ def main() -> int:
     rewards_test = wam / "pool/test/rewards.test.js"
     verify_backpressure_test = wam / "pool/test/verify-backpressure.test.js"
     block_spool_test = wam / "pool/test/block-spool.test.js"
+    maturation_claim_test = wam / "pool/test/maturation-claim.test.js"
 
     for p in (
-        daemon, share, daemon_test, payment_test, payment_postponed_test,
+        daemon, share, job_manager, daemon_test, payment_test, payment_postponed_test,
         share_claim_test, winning_share_test, rewards_test,
-        verify_backpressure_test, block_spool_test,
+        verify_backpressure_test, block_spool_test, maturation_claim_test,
     ):
         if not p.is_file():
             raise SystemExit(f"missing required WAM patch file: {p}")
@@ -131,6 +133,22 @@ def main() -> int:
         ("broadcast uses signed bytes", "sendrawtransaction"),
         ("unknown outcome is reconciled by txid", "getrawtransaction"),
     ])
+    job_text = job_manager.read_text(encoding="utf-8")
+    source_checks += require_tokens(job_text, [
+        ("recovered block restores coinbase value", "coinbaseValue: e.coinbaseValue"),
+        ("recovered block restores distributable value", "distributableValue: e.distributableValue"),
+        ("recovered block restores dev fee value", "devFeeAmount: e.devFeeAmount"),
+        ("duplicate-like recovery is offered to payout", "offering it for payout"),
+        ("RandomX native admission is VM-slot bounded", "this._vmSlots = vms"),
+        ("RandomX surplus waits in JavaScript", "this._waiting = []"),
+        ("RandomX hashes through VM-slot gate", "this._hashWithOneVm(job.seedHash, header)"),
+    ])
+    source_checks += require_tokens(share_text, [
+        ("block accounting checks pending idempotency", "this.redis.hexists(this.k('blocks:pending'), share.blockHash)"),
+        ("block accounting checks confirmed idempotency", "this.redis.sismember(this.k('blocks:confirmed:hashes'), share.blockHash)"),
+        ("matured block hashes are retained", "pipe.sadd(this.k('blocks:confirmed:hashes'), record.blockHash)"),
+    ])
+
     intent_write = "await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));"
     broadcast = "await this.daemon.cmd('sendrawtransaction', [signedHex]);"
     write_at = share_text.find(intent_write)
@@ -158,6 +176,7 @@ def main() -> int:
         (["node", str(rewards_test)], wam / "pool", None),
         (["node", str(verify_backpressure_test)], wam / "pool", None),
         (["node", str(block_spool_test)], wam / "pool", None),
+        (["node", str(maturation_claim_test)], wam / "pool", None),
     ]
 
     results = []
@@ -191,6 +210,10 @@ def main() -> int:
             "pplns_window_regression_passes": ok,
             "randomx_backpressure_regression_passes": ok,
             "solved_block_spool_regression_passes": ok,
+            "recovered_block_restores_money_context": ok,
+            "recovered_duplicate_reaches_idempotent_accounting": ok,
+            "record_block_idempotency_regression_passes": ok,
+            "randomx_native_workers_are_vm_slot_bounded": ok,
         },
         "source_contract": source_checks,
         "commands": results,
