@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bind the treasury regression model to the exact reviewed WAM source."""
+"""Bind treasury regressions to the exact reviewed WAM source."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 
-WAM_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
+WAM_COMMIT = "bb6d5214f2f5de3b7464587cc1b2949d221dcd18"
 
 
 def main() -> int:
@@ -31,28 +31,58 @@ def main() -> int:
 
     script = (root / "scripts/treasury_spend.py").read_text(encoding="utf-8")
     params = (root / "src/wam/chainparams.cpp").read_text(encoding="utf-8")
+    upstream_test = (root / "scripts/test/test_treasury_spend.py").read_text(
+        encoding="utf-8"
+    )
+
     checks = {
-        "mempool_is_consulted": 'rpc.call("getrawmempool")' in script,
-        "current_mempool_lookup_can_continue_on_unknown_tx":
-            "except Exception:\n            continue" in script,
-        "current_wif_check_is_checksum_only":
-            "def _wif_looks_whole" in script
-            and "WIF carries its own base58check checksum" in script,
-        "current_file_combines_online_and_offline_roles":
-            all(x in script for x in ("def cmd_plan", "def cmd_sign", "def cmd_broadcast")),
-        "current_broadcaster_does_not_recheck_gettxout": '"gettxout"' not in script,
+        "mempool_is_consulted":
+            'rpc.call("getrawmempool")' in script,
+        "mempool_lookup_fails_closed":
+            "cannot read mempool transaction" in script
+            and "Nothing was planned." in script,
+        "wif_validates_checksum_network_shape_and_scalar":
+            all(
+                token in script
+                for token in (
+                    "def _wif_problem",
+                    "WAM_WIF_VERSION = 190",
+                    "SECP256K1_N =",
+                    "another network",
+                    "compressed-key marker",
+                    "valid secp256k1 private key",
+                )
+            ),
+        "plan_records_exact_input_set":
+            '"inputSet": inputs' in script,
+        "signer_decodes_and_verifies_unsigned_transaction":
+            "def _offline_decode" in script
+            and '_verify_against_plan(plan, decoded, "the unsigned transaction")'
+            in script,
+        "broadcaster_verifies_signed_transaction":
+            '_verify_against_plan(signed, tx, "the signed transaction")' in script,
+        "broadcaster_rechecks_inputs_with_mempool":
+            'rpc.call("gettxout", [txid, vout, True])' in script,
+        "roles_are_explicit_plan_sign_broadcast_commands":
+            all(
+                x in script
+                for x in ("def cmd_plan", "def cmd_sign", "def cmd_broadcast")
+            ),
+        "upstream_regression_suite_covers_wif_and_plan_mismatch":
+            "a key for another network is refused" in upstream_test
+            and "different inputs with the same count are refused" in upstream_test,
         "wam_mainnet_wif_prefix_is_190":
             "base58Prefixes[SECRET_KEY]     = std::vector<unsigned char>(1, 190)"
             in params,
     }
     if not all(checks.values()):
         raise AssertionError(
-            "locked treasury source contract changed: "
+            "current treasury source contract changed: "
             + json.dumps(checks, sort_keys=True)
         )
 
     evidence = {
-        "schema": "wam-security-treasury-static/v1",
+        "schema": "wam-security-treasury-static/v2",
         "target": {
             "repository": "wamcoin-core-dev/wam-coin",
             "commit": head,
@@ -64,7 +94,7 @@ def main() -> int:
             "common": "src/wam_security/treasury/common.py",
         },
         "result": "PASS",
-        "classification": "LOCKED_UPSTREAM_GAPS_CAPTURED_AND_REGRESSION_MODELLED",
+        "classification": "CURRENT_UPSTREAM_TREASURY_HARDENING_CAPTURED",
     }
     out = args.out.resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +102,7 @@ def main() -> int:
         json.dumps(evidence, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print("treasury locked-source contract: PASS")
+    print("treasury current-source contract: PASS")
     return 0
 
 
