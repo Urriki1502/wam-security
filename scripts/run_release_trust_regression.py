@@ -13,7 +13,7 @@ import tempfile
 
 from wam_security.release_trust import assert_anchor_consistency
 
-WAM_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
+WAM_COMMIT = "bb6d5214f2f5de3b7464587cc1b2949d221dcd18"
 
 
 def git_head(root: Path) -> str:
