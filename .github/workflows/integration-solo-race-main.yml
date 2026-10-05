@@ -47,11 +47,11 @@ jobs:
           ./autogen.sh >/dev/null
           ./configure             --without-gui             --disable-zmq             --disable-tests-fuzz-binary             --with-incompatible-bdb             CPPFLAGS="-I$GITHUB_WORKSPACE/wam-coin/build/randomx/src"             LIBS="$GITHUB_WORKSPACE/wam-coin/build/randomx/build/librandomx.a -lpthread"             >/dev/null
 
-      - name: Build node and CLI
+      - name: Build current WAM node and CLI
         working-directory: wam-coin/build/wam-core
         run: |
           set -euo pipefail
-          make -j2 src/bitcoind src/bitcoin-cli
+          make -j2
 
       - name: Build current-main miner and run self-test
         working-directory: wam-coin
@@ -59,8 +59,18 @@ jobs:
           set -euo pipefail
           mkdir -p out/solo-race-bin
           CXXFLAGS="-O2 -mtune=generic" OUT="$PWD/out/solo-race-bin/wam-miner"             bash miner/build.sh
-          cp build/wam-core/src/bitcoind out/solo-race-bin/wamd
-          cp build/wam-core/src/bitcoin-cli out/solo-race-bin/wam-cli
+          node_bin=""
+          cli_bin=""
+          for p in build/wam-core/src/wamd build/wam-core/src/bitcoind; do
+            [ -x "$p" ] && { node_bin="$p"; break; }
+          done
+          for p in build/wam-core/src/wam-cli build/wam-core/src/bitcoin-cli; do
+            [ -x "$p" ] && { cli_bin="$p"; break; }
+          done
+          [ -n "$node_bin" ] || { echo "wamd/bitcoind was not built" >&2; exit 1; }
+          [ -n "$cli_bin" ] || { echo "wam-cli/bitcoin-cli was not built" >&2; exit 1; }
+          cp "$node_bin" out/solo-race-bin/wamd
+          cp "$cli_bin" out/solo-race-bin/wam-cli
           chmod +x out/solo-race-bin/wamd out/solo-race-bin/wam-cli out/solo-race-bin/wam-miner
           out/solo-race-bin/wam-miner --self-test --no-colour
 
