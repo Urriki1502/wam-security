@@ -21,24 +21,24 @@ permissions:
   contents: read
 
 jobs:
-  released-patch-review:
+  current-main-payout-review:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout WAM Security
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
-      - name: Checkout reviewed WAM patch
+      - name: Checkout reviewed WAM main
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: wamcoin-core-dev/wam-coin
-          ref: bd71b0bd645286a3867dad6b2bfefd911ec8a5b6
+          ref: bb6d5214f2f5de3b7464587cc1b2949d221dcd18
           path: wam-coin
 
-      - name: Run integration-security payout review
+      - name: Run exactly-once + current-main payout review
         run: |
           PYTHONPATH=src python3 scripts/run_integration_payout_patch.py wam-coin \
-            --expected-commit bd71b0bd645286a3867dad6b2bfefd911ec8a5b6 \
+            --expected-commit bb6d5214f2f5de3b7464587cc1b2949d221dcd18 \
             --cases 5000
 
       - name: Upload integration evidence

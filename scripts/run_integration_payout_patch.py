@@ -15,7 +15,7 @@ import sys
 import time
 from typing import Iterable
 
-PATCH_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
+PATCH_COMMIT = "bb6d5214f2f5de3b7464587cc1b2949d221dcd18"
 
 
 def run(cmd: list[str], *, cwd: Path, timeout: int = 180, env: dict[str, str] | None = None) -> dict:
@@ -81,8 +81,18 @@ def main() -> int:
     share = wam / "pool/lib/shareProcessor.js"
     daemon_test = wam / "pool/test/daemon-money-failover.test.js"
     payment_test = wam / "pool/test/payment-safety.test.js"
+    payment_postponed_test = wam / "pool/test/payment-postponed.test.js"
+    share_claim_test = wam / "pool/test/share-claim.test.js"
+    winning_share_test = wam / "pool/test/winning-share.test.js"
+    rewards_test = wam / "pool/test/rewards.test.js"
+    verify_backpressure_test = wam / "pool/test/verify-backpressure.test.js"
+    block_spool_test = wam / "pool/test/block-spool.test.js"
 
-    for p in (daemon, share, daemon_test, payment_test):
+    for p in (
+        daemon, share, daemon_test, payment_test, payment_postponed_test,
+        share_claim_test, winning_share_test, rewards_test,
+        verify_backpressure_test, block_spool_test,
+    ):
         if not p.is_file():
             raise SystemExit(f"missing required WAM patch file: {p}")
 
@@ -108,12 +118,30 @@ def main() -> int:
         ("socket outcome is classified", "err.ambiguous"),
         ("ambiguous money RPC stops failover", "if (guarded && err.ambiguous)"),
     ])
-    source_checks += require_tokens(share.read_text(encoding="utf-8"), [
+    share_text = share.read_text(encoding="utf-8")
+    source_checks += require_tokens(share_text, [
         ("unknown payout outcome fails closed", "if (err.ambiguous !== false)"),
         ("unknown payout pauses payments", "this.paused = true"),
         ("payment intent is durable", "payment:inflight"),
         ("accounting uses Redis transaction", "const pipe = this.redis.multi()"),
+        ("transaction is created before broadcast", "createrawtransaction"),
+        ("wallet funds the transaction before broadcast", "fundrawtransaction"),
+        ("wallet signs before broadcast", "signrawtransactionwithwallet"),
+        ("transaction identity exists before broadcast", "decoderawtransaction"),
+        ("broadcast uses signed bytes", "sendrawtransaction"),
+        ("unknown outcome is reconciled by txid", "getrawtransaction"),
     ])
+    intent_write = "await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));"
+    broadcast = "await this.daemon.cmd('sendrawtransaction', [signedHex]);"
+    write_at = share_text.find(intent_write)
+    broadcast_at = share_text.find(broadcast)
+    durable_before_broadcast = write_at >= 0 and broadcast_at >= 0 and write_at < broadcast_at
+    source_checks.append({
+        "name": "durable txid/raw intent precedes broadcast",
+        "ok": durable_before_broadcast,
+    })
+    if not durable_before_broadcast:
+        raise AssertionError("payment identity/raw bytes are not durably stored before broadcast")
 
     pyenv = os.environ.copy()
     pyenv["PYTHONPATH"] = str(repo / "src")
@@ -124,6 +152,12 @@ def main() -> int:
           "--cases", str(args.cases)], repo, pyenv),
         (["node", str(daemon_test)], wam / "pool", None),
         (["node", str(payment_test)], wam / "pool", None),
+        (["node", str(payment_postponed_test)], wam / "pool", None),
+        (["node", str(share_claim_test)], wam / "pool", None),
+        (["node", str(winning_share_test)], wam / "pool", None),
+        (["node", str(rewards_test)], wam / "pool", None),
+        (["node", str(verify_backpressure_test)], wam / "pool", None),
+        (["node", str(block_spool_test)], wam / "pool", None),
     ]
 
     results = []
@@ -138,7 +172,7 @@ def main() -> int:
 
     ok = len(results) == len(commands) and all(r["returncode"] == 0 for r in results)
     evidence = {
-        "schema": "wam-security-integration-payout-patch/v1",
+        "schema": "wam-security-integration-payout-patch/v2",
         "target": {
             "repository": "wamcoin-core-dev/wam-coin",
             "expected_commit": args.expected_commit,
@@ -150,6 +184,13 @@ def main() -> int:
             "restart_with_unresolved_intent_is_fail_closed": ok,
             "redis_accounting_uses_multi_exec": ok,
             "one_logical_payout_at_most_one_economic_payment": ok,
+            "transaction_identity_is_durable_before_broadcast": durable_before_broadcast and ok,
+            "same_signed_transaction_is_recoverable_after_unknown_outcome": ok,
+            "winning_share_accounting_regression_passes": ok,
+            "share_durability_regression_passes": ok,
+            "pplns_window_regression_passes": ok,
+            "randomx_backpressure_regression_passes": ok,
+            "solved_block_spool_regression_passes": ok,
         },
         "source_contract": source_checks,
         "commands": results,
