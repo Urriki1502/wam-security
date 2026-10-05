@@ -1,0 +1,57 @@
+name: Review - Maintainer Block Spool Fix
+
+on:
+  push:
+    branches:
+      - "review/maintainer-block-spool-260bc468"
+    paths:
+      - "scripts/review_maintainer_block_spool_fix.py"
+      - ".github/workflows/review-maintainer-block-spool.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact maintainer fix
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: 260bc468e5adffea7ce68d8f97fac3e27e4c50b2
+          fetch-depth: 2
+          path: wam-coin
+          persist-credentials: false
+
+      - name: Verify source invariants against direct bb6d521 child
+        run: |
+          set -euo pipefail
+          python3 scripts/review_maintainer_block_spool_fix.py wam-coin
+
+      - name: Run maintainer block-spool and accounting regressions
+        working-directory: wam-coin
+        run: |
+          set -euo pipefail
+          node pool/test/block-spool.test.js
+          node pool/test/maturation-claim.test.js
+          node pool/test/winning-share.test.js
+          node pool/test/share-claim.test.js
+          node pool/test/payment-safety.test.js
+          node pool/test/payment-postponed.test.js
+          node pool/test/rewards.test.js
+
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: maintainer-block-spool-fix-review
+          path: security-reports/maintainer-block-spool-fix.json
+          if-no-files-found: error
