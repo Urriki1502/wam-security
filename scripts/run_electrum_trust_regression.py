@@ -14,7 +14,7 @@ from wam_security.electrum.trust import (
     single_server_completeness_claim,
 )
 
-WAM_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
+WAM_COMMIT = "bb6d5214f2f5de3b7464587cc1b2949d221dcd18"
 
 
 def main() -> int:
