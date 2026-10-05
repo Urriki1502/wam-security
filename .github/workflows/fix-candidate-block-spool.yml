@@ -8,6 +8,8 @@ on:
       - "src/wam_security/block_spool/**"
       - "tests/test_block_spool_state_model.py"
       - "scripts/verify_block_spool_candidate_target.py"
+      - "scripts/apply_block_spool_candidate.py"
+      - "reference/upstream_patch/block_spool_recovery/**"
       - "docs/BLOCK_SPOOL_RECOVERY_CANDIDATE.md"
       - ".github/workflows/fix-candidate-block-spool.yml"
   workflow_dispatch:
@@ -47,6 +49,24 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=src python scripts/verify_block_spool_candidate_target.py             wam-coin             --out security-reports/block-spool-candidate-source.json
+
+      - name: Apply candidate to exact bb6d521 checkout
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_block_spool_candidate.py wam-coin
+          test -f wam-coin/pool/lib/blockRecovery.js
+
+      - name: Run current WAM pool regressions against candidate
+        working-directory: wam-coin
+        run: |
+          set -euo pipefail
+          node pool/test/block-spool.test.js
+          node pool/test/winning-share.test.js
+          node pool/test/share-claim.test.js
+          node pool/test/payment-safety.test.js
+          node pool/test/payment-postponed.test.js
+          node pool/test/rewards.test.js
+          node pool/test/verify-backpressure.test.js
 
       - name: Upload source-binding evidence
         if: always()
