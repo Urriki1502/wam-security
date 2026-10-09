@@ -2,6 +2,8 @@ name: Integration Security - Redis Recovery
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "scripts/run_integration_redis_recovery.py"
       - ".github/workflows/integration-redis-recovery.yml"
@@ -37,19 +39,19 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: wamcoin-core-dev/wam-coin
-          ref: bb6d5214f2f5de3b7464587cc1b2949d221dcd18
+          ref: 260bc468e5adffea7ce68d8f97fac3e27e4c50b2
           path: wam-coin
 
       - name: Run exactly-once payout regression gate
         run: |
           PYTHONPATH=src python3 scripts/run_integration_payout_patch.py wam-coin \
-            --expected-commit bb6d5214f2f5de3b7464587cc1b2949d221dcd18 \
+            --expected-commit 260bc468e5adffea7ce68d8f97fac3e27e4c50b2 \
             --cases 5000
 
       - name: Exercise real Redis MULTI/EXEC crash boundaries
         run: |
           python3 scripts/run_integration_redis_recovery.py wam-coin \
-            --expected-commit bb6d5214f2f5de3b7464587cc1b2949d221dcd18 \
+            --expected-commit 260bc468e5adffea7ce68d8f97fac3e27e4c50b2 \
             --cases 250
 
       - name: Upload integration evidence

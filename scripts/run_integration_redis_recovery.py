@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-PATCH_COMMIT = "bb6d5214f2f5de3b7464587cc1b2949d221dcd18"
+PATCH_COMMIT = "260bc468e5adffea7ce68d8f97fac3e27e4c50b2"
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 

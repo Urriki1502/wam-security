@@ -2,6 +2,8 @@ name: Integration Security - Solo Race on Current Main
 
 on:
   push:
+    branches:
+      - main
     paths:
       - ".github/workflows/integration-solo-race-main.yml"
   pull_request:
@@ -25,7 +27,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           repository: wamcoin-core-dev/wam-coin
-          ref: bb6d5214f2f5de3b7464587cc1b2949d221dcd18
+          ref: 260bc468e5adffea7ce68d8f97fac3e27e4c50b2
           path: wam-coin
 
       - name: Install build and race-test dependencies
