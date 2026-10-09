@@ -9,11 +9,12 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-PATCH_COMMIT = "bd71b0bd645286a3867dad6b2bfefd911ec8a5b6"
+PATCH_COMMIT = "260bc468e5adffea7ce68d8f97fac3e27e4c50b2"
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -173,6 +174,21 @@ def test_disconnect_after_exec_without_reply(host: str, port: int, prefix: str, 
     expect_committed(snapshot(host, port, prefix), amount)
 
 
+def git_head(root: Path) -> str | None:
+    try:
+        p = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        return p.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
 def require_source_contract(wam_root: Path) -> dict:
     share = wam_root / "pool/lib/shareProcessor.js"
     if not share.is_file():
@@ -193,6 +209,7 @@ def require_source_contract(wam_root: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("wam_root", type=Path, help="checkout of wamcoin-core-dev/wam-coin")
+    ap.add_argument("--expected-commit", default=PATCH_COMMIT)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=6379)
     ap.add_argument("--cases", type=int, default=100)
@@ -205,7 +222,13 @@ def main() -> int:
     if args.cases < 1 or args.cases > 5000:
         raise SystemExit("--cases must be between 1 and 5000")
 
-    source_contract = require_source_contract(args.wam_root.resolve())
+    wam_root = args.wam_root.resolve()
+    head = git_head(wam_root)
+    if head != args.expected_commit:
+        raise SystemExit(
+            f"WAM checkout is {head or 'not a git checkout'}, expected {args.expected_commit}"
+        )
+    source_contract = require_source_contract(wam_root)
     ping = with_conn(args.host, args.port, lambda c: c.cmd("PING"))
     if ping != "PONG":
         raise SystemExit(f"unexpected Redis PING reply: {ping!r}")
@@ -223,10 +246,11 @@ def main() -> int:
 
     completed = args.cases if not failures else failures[0]["case"]
     evidence = {
-        "schema": "wam-security-integration-redis-recovery/v1",
+        "schema": "wam-security-integration-redis-recovery/v2",
         "target": {
             "repository": "wamcoin-core-dev/wam-coin",
-            "patch_commit": PATCH_COMMIT,
+            "expected_commit": args.expected_commit,
+            "observed_commit": head,
         },
         "redis": {"host": args.host, "port": args.port, "loopback_only": True},
         "source_contract": source_contract,

@@ -1,0 +1,93 @@
+name: Integration Security - Solo Race on Current Main
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/integration-solo-race-main.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/integration-solo-race-main.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  solo-race-current-main:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout WAM Security
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Checkout reviewed WAM main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: 260bc468e5adffea7ce68d8f97fac3e27e4c50b2
+          path: wam-coin
+
+      - name: Install build and race-test dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq             build-essential libtool autotools-dev automake pkg-config             bsdmainutils cmake curl git python3             libevent-dev libboost-dev libssl-dev libsqlite3-dev             bc iproute2 procps util-linux
+
+      - name: Fetch pinned Bitcoin Core and RandomX
+        working-directory: wam-coin
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-upstream.sh
+
+      - name: Configure current WAM main
+        working-directory: wam-coin/build/wam-core
+        run: |
+          set -euo pipefail
+          ./autogen.sh >/dev/null
+          ./configure             --without-gui             --disable-zmq             --disable-tests-fuzz-binary             --with-incompatible-bdb             CPPFLAGS="-I$GITHUB_WORKSPACE/wam-coin/build/randomx/src"             LIBS="$GITHUB_WORKSPACE/wam-coin/build/randomx/build/librandomx.a -lpthread"             >/dev/null
+
+      - name: Build current WAM node and CLI
+        working-directory: wam-coin/build/wam-core
+        run: |
+          set -euo pipefail
+          make -j2
+
+      - name: Build current-main miner and run self-test
+        working-directory: wam-coin
+        run: |
+          set -euo pipefail
+          mkdir -p out/solo-race-bin
+          CXXFLAGS="-O2 -mtune=generic" OUT="$PWD/out/solo-race-bin/wam-miner"             bash miner/build.sh
+          node_bin=""
+          cli_bin=""
+          for p in build/wam-core/src/wamd build/wam-core/src/bitcoind; do
+            [ -x "$p" ] && { node_bin="$p"; break; }
+          done
+          for p in build/wam-core/src/wam-cli build/wam-core/src/bitcoin-cli; do
+            [ -x "$p" ] && { cli_bin="$p"; break; }
+          done
+          [ -n "$node_bin" ] || { echo "wamd/bitcoind was not built" >&2; exit 1; }
+          [ -n "$cli_bin" ] || { echo "wam-cli/bitcoin-cli was not built" >&2; exit 1; }
+          cp "$node_bin" out/solo-race-bin/wamd
+          cp "$cli_bin" out/solo-race-bin/wam-cli
+          chmod +x out/solo-race-bin/wamd out/solo-race-bin/wam-cli out/solo-race-bin/wam-miner
+          out/solo-race-bin/wam-miner --self-test --no-colour
+
+      - name: Run isolated two-miner solo race regression
+        working-directory: wam-coin
+        env:
+          WAM_RACE_SECONDS: "180"
+        run: |
+          set -euo pipefail
+          bash scripts/test/test_solo_race.sh "$PWD/out/solo-race-bin" | tee "$GITHUB_WORKSPACE/solo-race.log"
+
+      - name: Upload solo-race evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: current-main-solo-race-evidence
+          path: solo-race.log
+          if-no-files-found: warn
