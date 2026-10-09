@@ -1,0 +1,39 @@
+name: Research WS-POOL-JOB-001 260bc468 Reproducer
+
+on:
+  pull_request:
+    paths:
+      - "scripts/reproduce_ws_pool_job_001.js"
+      - ".github/workflows/research-ws-pool-job-001.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce-stale-job-current-main:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout WAM Security fixture
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Checkout exact audited WAM upstream source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: wamcoin-core-dev/wam-coin
+          ref: 260bc468e5adffea7ce68d8f97fac3e27e4c50b2
+          path: wam-src
+      - name: Run isolated in-flight RandomX stale-job reproduction
+        run: |
+          set -euo pipefail
+          node scripts/reproduce_ws_pool_job_001.js \
+            --wam-root wam-src \
+            --expected-commit 260bc468e5adffea7ce68d8f97fac3e27e4c50b2 \
+            --out security-reports/ws-pool-job-001-260bc468.json
+      - name: Upload diagnostic finding evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ws-pool-job-001-260bc468
+          path: security-reports/ws-pool-job-001-260bc468.json
+          if-no-files-found: error
